@@ -22,6 +22,27 @@ import {
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
 import {
+  ArrowRight,
+  Check,
+  Circle,
+  Cloud,
+  CloudOff,
+  Grid2X2,
+  Heart,
+  History,
+  Minus,
+  Package,
+  Plus,
+  RefreshCw,
+  Search,
+  Settings,
+  Sparkles,
+  Sun,
+  TriangleAlert,
+  Wallet,
+  type LucideIcon,
+} from "lucide-react-native";
+import {
   useFonts,
   Quicksand_400Regular,
   Quicksand_500Medium,
@@ -96,6 +117,24 @@ const notify = (
   props?: Record<string, unknown>,
 ) =>
   Toast.show({ type, text1: text, visibilityTime: props ? 8000 : 3500, props });
+function IconLabel({
+  icon: Icon,
+  children,
+  textStyle,
+  color = "#334EAC",
+}: {
+  icon: LucideIcon;
+  children: React.ReactNode;
+  textStyle?: React.ComponentProps<typeof Text>["style"];
+  color?: string;
+}) {
+  return (
+    <View style={{ flexDirection: "row", alignItems: "center", gap: 7 }}>
+      <Icon size={18} color={color} strokeWidth={2} accessible={false} />
+      <Text style={[textStyle, { flexShrink: 1 }]}>{children}</Text>
+    </View>
+  );
+}
 export default function App() {
   const [fonts, error] = useFonts({
     Quicksand_400Regular,
@@ -301,7 +340,12 @@ function Pocket() {
       <View style={s.header}>
         <View style={s.brandRow}>
           <View style={s.brandMark}>
-            <Text style={s.markText}>▱</Text>
+            <Wallet
+              size={24}
+              color="#FFF9F0"
+              strokeWidth={2.2}
+              accessible={false}
+            />
           </View>
           <Text style={s.brand}>
             stocket<Text style={{ color: "#CEB5D4" }}>.</Text>
@@ -327,17 +371,29 @@ function Pocket() {
             {data?.company.name ?? "YOUR WORKSPACE"}
           </Text>
           <Pressable accessibilityRole="button" onPress={() => void sync()}>
-            <Text style={s.sync}>
+            <IconLabel
+              icon={
+                syncing
+                  ? RefreshCw
+                  : !online
+                    ? CloudOff
+                    : connected
+                      ? Cloud
+                      : Circle
+              }
+              textStyle={s.sync}
+              color={p.primary}
+            >
               {syncing
-                ? "↻ Syncing…"
+                ? "Syncing…"
                 : !online
-                  ? "○ Offline"
+                  ? "Offline"
                   : connected
                     ? data?.queue.length
                       ? `${data.queue.length} pending`
-                      : "☁ Synced"
-                    : "○ Local demo"}
-            </Text>
+                      : "Synced"
+                    : "Local demo"}
+            </IconLabel>
           </Pressable>
         </View>
         {!connected && (
@@ -345,20 +401,25 @@ function Pocket() {
             <Text style={s.demoText}>
               You’re exploring the local demo.{" "}
               <Text style={{ fontFamily: "Quicksand_700Bold" }}>
-                Connect your company →
+                Connect your company
               </Text>
             </Text>
           </Pressable>
         )}
-        <Text style={s.title}>
-          {tab === "Inventory"
-            ? `Hello, ${data?.profile.name ?? "there"} ☀`
-            : tab === "Activity"
-              ? "The little things, logged"
-              : tab === "Categories"
-                ? "A place for everything"
-                : "Your pocket, your way"}
-        </Text>
+        <View style={s.titleRow}>
+          <Text style={[s.title, { flexShrink: 1 }]}>
+            {tab === "Inventory"
+              ? `Hello, ${data?.profile.name ?? "there"}`
+              : tab === "Activity"
+                ? "The little things, logged"
+                : tab === "Categories"
+                  ? "A place for everything"
+                  : "Your pocket, your way"}
+          </Text>
+          {tab === "Inventory" && (
+            <Sun size={23} color={p.primary} accessible={false} />
+          )}
+        </View>
         <Text style={s.subtitle}>
           {tab === "Inventory"
             ? "Let’s keep the everyday essentials moving."
@@ -395,9 +456,7 @@ function Pocket() {
                 <Text style={[s.statNumber, { color: p.alert }]}>
                   {low.length}
                 </Text>
-                <Text style={[s.muted, { color: p.alert }]}>
-                  need a top-up →
-                </Text>
+                <Text style={[s.muted, { color: p.alert }]}>need a top-up</Text>
               </Pressable>
             </View>
             <View style={s.sectionRow}>
@@ -406,17 +465,26 @@ function Pocket() {
                 style={s.addButton}
                 onPress={() => setForm({ kind: "add" })}
               >
-                <Text style={s.primaryText}>＋ Add item</Text>
+                <IconLabel
+                  icon={Plus}
+                  textStyle={s.primaryText}
+                  color="#FFF9F0"
+                >
+                  Add item
+                </IconLabel>
               </Pressable>
             </View>
-            <TextInput
-              accessibilityLabel="Search inventory"
-              style={s.input}
-              placeholder="⌕  Find a supply…"
-              placeholderTextColor={p.muted}
-              value={query}
-              onChangeText={setQuery}
-            />
+            <View style={s.searchField}>
+              <Search size={19} color={p.muted} accessible={false} />
+              <TextInput
+                accessibilityLabel="Search inventory"
+                style={s.searchInput}
+                placeholder="Find a supply…"
+                placeholderTextColor={p.muted}
+                value={query}
+                onChangeText={setQuery}
+              />
+            </View>
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
@@ -500,14 +568,24 @@ function Pocket() {
                     </View>
                   </View>
                   {isLow(item) && (
-                    <Text style={s.lowPill}>● Running a little low</Text>
+                    <View style={s.lowBadge}>
+                      <IconLabel
+                        icon={TriangleAlert}
+                        textStyle={s.lowPill}
+                        color={p.alert}
+                      >
+                        Running a little low
+                      </IconLabel>
+                    </View>
                   )}
                   <View style={s.itemActions}>
                     <Pressable
                       style={s.adjust}
                       onPress={() => setForm({ kind: "adjust", item })}
                     >
-                      <Text style={s.adjustText}>＋ Adjust stock</Text>
+                      <IconLabel icon={Plus} textStyle={s.adjustText}>
+                        Adjust stock
+                      </IconLabel>
                     </Pressable>
                     <Pressable
                       accessibilityLabel={`Edit threshold for ${c.name}`}
@@ -542,9 +620,12 @@ function Pocket() {
                 </Pressable>
               </View>
             )}
-            <Text style={s.footer}>
-              Your stock levels stay inside your company. ♡
-            </Text>
+            <View style={s.footerRow}>
+              <Text style={s.footer}>
+                Your stock levels stay inside your company.
+              </Text>
+              <Heart size={14} color={p.muted} accessible={false} />
+            </View>
           </>
         )}
         {data &&
@@ -598,7 +679,10 @@ function Pocket() {
                 setTab("Inventory");
               }}
             >
-              <Text style={s.sectionTitle}>{c.name} →</Text>
+              <View style={s.categoryTitle}>
+                <Text style={[s.sectionTitle, { flex: 1 }]}>{c.name}</Text>
+                <ArrowRight size={20} color={p.primary} accessible={false} />
+              </View>
               <Text style={s.muted}>
                 {
                   active.filter(
@@ -746,22 +830,28 @@ function Pocket() {
         )}
       </ScrollView>
       <View style={s.bottomNav}>
-        {[
-          ["Inventory", "▱"],
-          ["Categories", "▦"],
-          ["Activity", "↻"],
-          ["Settings", "☷"],
-        ].map(([name, icon]) => (
+        {(
+          [
+            ["Inventory", Package],
+            ["Categories", Grid2X2],
+            ["Activity", History],
+            ["Settings", Settings],
+          ] as const
+        ).map(([name, Icon]) => (
           <Pressable
             key={name}
             accessibilityRole="tab"
+            accessibilityLabel={name}
             accessibilityState={{ selected: tab === name }}
             onPress={() => setTab(name)}
             style={s.navItem}
           >
-            <Text style={[s.navIcon, tab === name && { color: p.primary }]}>
-              {icon}
-            </Text>
+            <Icon
+              size={24}
+              color={tab === name ? p.primary : p.muted}
+              strokeWidth={2}
+              accessible={false}
+            />
             <Text
               style={[
                 s.navText,
@@ -1094,11 +1184,15 @@ function MobileForm({
                   setCat(c.category_id);
                 }}
               >
-                <Text style={s.adjustText}>＋ {c.name}</Text>
+                <IconLabel icon={Plus} textStyle={s.adjustText}>
+                  {c.name}
+                </IconLabel>
               </Pressable>
             ))}
           {selected && (
-            <Text style={s.adjustText}>✓ Linked to the shared catalog</Text>
+            <IconLabel icon={Check} textStyle={s.adjustText}>
+              Linked to the shared catalog
+            </IconLabel>
           )}
           <Text style={s.label}>Category</Text>
           <View style={s.chipsWrap}>
@@ -1173,7 +1267,9 @@ function MobileForm({
                     }
                   }}
                 >
-                  <Text style={s.adjustText}>✦ Suggest a category</Text>
+                  <IconLabel icon={Sparkles} textStyle={s.adjustText}>
+                    Suggest a category
+                  </IconLabel>
                 </Pressable>
               )}
             </>
@@ -1195,13 +1291,17 @@ function MobileForm({
             style={[s.chip, direction === 1 && s.chipActive]}
             onPress={() => setDirection(1)}
           >
-            <Text style={s.adjustText}>＋ Stock in</Text>
+            <IconLabel icon={Plus} textStyle={s.adjustText}>
+              Stock in
+            </IconLabel>
           </Pressable>
           <Pressable
             style={[s.chip, direction === -1 && s.chipActive]}
             onPress={() => setDirection(-1)}
           >
-            <Text style={s.adjustText}>− Stock out</Text>
+            <IconLabel icon={Minus} textStyle={s.adjustText}>
+              Stock out
+            </IconLabel>
           </Pressable>
         </View>
       )}
@@ -1598,6 +1698,34 @@ function styles(p: typeof palette) {
       borderBottomWidth: 1,
       borderColor: p.line,
     },
+    titleRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+    footerRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 6,
+      flexWrap: "wrap",
+      marginTop: 20,
+    },
+    categoryTitle: { flexDirection: "row", alignItems: "center", gap: 10 },
+    searchField: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 10,
+      backgroundColor: p.surface,
+      borderWidth: 1,
+      borderColor: p.line,
+      borderRadius: 12,
+      paddingHorizontal: 14,
+    },
+    searchInput: {
+      flex: 1,
+      minWidth: 0,
+      paddingVertical: 14,
+      fontFamily: "Quicksand_500Medium",
+      fontSize: 16,
+      color: p.text,
+    },
     brandRow: { flexDirection: "row", alignItems: "center", gap: 9 },
     brandMark: {
       height: 35,
@@ -1608,7 +1736,7 @@ function styles(p: typeof palette) {
       alignItems: "center",
       transform: [{ rotate: "-6deg" }],
     },
-    markText: { color: "#fff", fontSize: 27 },
+
     brand: {
       fontFamily: "Quicksand_700Bold",
       fontSize: 30,
@@ -1785,16 +1913,18 @@ function styles(p: typeof palette) {
       marginTop: 10,
     },
     quantity: { fontFamily: "Quicksand_700Bold", fontSize: 24, color: p.text },
-    lowPill: {
+    lowBadge: {
       alignSelf: "flex-start",
       paddingVertical: 4,
       paddingHorizontal: 8,
       borderRadius: 7,
       backgroundColor: p.alertBg,
+      marginTop: 10,
+    },
+    lowPill: {
       color: p.alert,
       fontFamily: "Quicksand_600SemiBold",
       fontSize: 14,
-      marginTop: 10,
     },
     itemActions: {
       flexDirection: "row",
@@ -1830,7 +1960,6 @@ function styles(p: typeof palette) {
       color: p.muted,
       textAlign: "center",
       lineHeight: 21,
-      marginTop: 20,
     },
     bottomNav: {
       backgroundColor: p.surface,
@@ -1841,7 +1970,7 @@ function styles(p: typeof palette) {
       paddingHorizontal: 14,
     },
     navItem: { flex: 1, alignItems: "center", gap: 4 },
-    navIcon: { fontSize: 24, color: p.muted, lineHeight: 27 },
+
     navText: {
       fontFamily: "Quicksand_500Medium",
       fontSize: 14,
