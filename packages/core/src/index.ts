@@ -62,6 +62,7 @@ export type Snapshot = {
   catalog: CatalogItem[];
   items: Item[];
   events: StockEvent[];
+  people?: Pick<Profile, "id" | "name">[];
   queue: Mutation[];
   lastSynced: string | null;
 };
@@ -79,6 +80,28 @@ export const isLow = (item: Item) => item.quantity < item.low_stock_threshold;
 export function validateQuantity(value: number, label = "Quantity") {
   if (!Number.isSafeInteger(value) || value < 0 || value > 1000000)
     throw new Error(`${label} must be a whole number between 0 and 1,000,000.`);
+}
+/** Exact catalog identity only: fuzzy suggestions must never merge different supplies. */
+export function resolveStockAddition(
+  data: Snapshot,
+  name: string,
+  selected: CatalogItem | null = null,
+) {
+  const normalize = (value: string) =>
+    value
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]/g, "");
+  const key = normalize(name);
+  const catalog =
+    selected ??
+    (key ? data.catalog.find((c) => normalize(c.name) === key) : undefined);
+  const item = data.items.find(
+    (i) =>
+      i.company_id === data.company.id &&
+      (catalog ? i.catalog_item_id === catalog.id : false),
+  );
+  return { catalog, item };
 }
 export function catalogMatches(catalog: CatalogItem[], query: string) {
   const normalize = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");

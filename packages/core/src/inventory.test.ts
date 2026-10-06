@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   applyMutation,
+  resolveStockAddition,
   csvExport,
   demoSnapshot,
   InventoryStore,
@@ -180,5 +181,32 @@ test("category nesting rejects cycles and preserves valid offline additions", ()
         source: "online",
       }),
     /nested inside itself/,
+  );
+});
+
+test("adding existing stock resolves exact catalog names and keeps quantities additive", () => {
+  const data = demoSnapshot();
+  const before = data.items[0];
+  const existing = resolveStockAddition(data, "  PRINTER PAPER A4  ");
+  assert.equal(existing.item?.id, before.id);
+  assert.equal(existing.catalog?.id, before.catalog_item_id);
+  const next = applyMutation(data, delta(data, 7));
+  assert.equal(next.items.length, data.items.length);
+  assert.equal(next.items[0].quantity, before.quantity + 7);
+  assert.equal(next.items[0].low_stock_threshold, before.low_stock_threshold);
+  assert.equal(next.events[0].delta, 7);
+  assert.equal(resolveStockAddition(data, "Printer paper A3").item, undefined);
+  assert.equal(resolveStockAddition(data, "").catalog, undefined);
+  const removed = copy(data);
+  removed.items[0].archived_at = new Date().toISOString();
+  assert.equal(
+    resolveStockAddition(removed, "printer paper a4").item?.id,
+    before.id,
+  );
+  const anotherCompany = copy(data);
+  anotherCompany.items[0].company_id = "other-company";
+  assert.equal(
+    resolveStockAddition(anotherCompany, "printer paper a4").item,
+    undefined,
   );
 });

@@ -23,6 +23,13 @@ import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
 import {
   ArrowRight,
+  Bell,
+  Camera,
+  LayoutDashboard,
+  FileText,
+  Printer,
+  Pencil,
+  Folder,
   Check,
   Circle,
   Cloud,
@@ -49,6 +56,7 @@ import {
   Quicksand_600SemiBold,
   Quicksand_700Bold,
 } from "@expo-google-fonts/quicksand";
+import * as SecureStore from "expo-secure-store";
 import * as Crypto from "expo-crypto";
 import * as Network from "expo-network";
 import * as Device from "expo-device";
@@ -61,6 +69,8 @@ import Toast, { BaseToast } from "react-native-toast-message";
 import {
   InventoryStore,
   catalogMatches,
+  resolveStockAddition,
+  validateQuantity,
   csvExport,
   inventoryReportHtml,
   demoSnapshot,
@@ -83,11 +93,12 @@ const palette = {
   bg: "#FFF9F0",
   surface: "#fffdfa",
   text: "#102B53",
-  muted: "#69788d",
+  muted: "#617187",
   primary: "#334EAC",
+  button: "#334EAC",
   line: "#e5e8e9",
   soft: "#edf2fb",
-  alert: "#b95027",
+  alert: "#AF4822",
   alertBg: "#fff1e6",
   movementPositive: "#217A4B",
   movementNegative: "#C7353A",
@@ -95,6 +106,7 @@ const palette = {
 const darkPalette = {
   ...palette,
   bg: "#081F5C",
+  primary: "#A7BCFF",
   surface: "#112c63",
   text: "#D0E3FF",
   muted: "#a4b9d6",
@@ -117,20 +129,83 @@ const notify = (
   props?: Record<string, unknown>,
 ) =>
   Toast.show({ type, text1: text, visibilityTime: props ? 8000 : 3500, props });
+function CategoryArt({ name }: { name: string }) {
+  const Icon = /paper|note/i.test(name)
+    ? FileText
+    : /ink|toner|print/i.test(name)
+      ? Printer
+      : /filing|packing|folder/i.test(name)
+        ? Folder
+        : /desk|pen|writing/i.test(name)
+          ? Pencil
+          : Grid2X2;
+  return (
+    <Icon size={30} color="#334EAC" strokeWidth={1.8} accessible={false} />
+  );
+}
+const pocketGuide = [
+  {
+    title: "Hello, and welcome",
+    tab: "Overview",
+    body: "Overview shows the health of your workspace, supplies that need a top-up, and recent movements. Your company name replaces the local demo after sign-in. Your stock stays inside your company.",
+  },
+  {
+    title: "Add your everyday essentials",
+    tab: "Inventory",
+    body: "Tap Add item and search the shared catalog. Choose a match to reuse its photo and category, or create a new supply with a photo and a manual or suggested category. If you already stock it, the quantity you enter is added to its current count.",
+  },
+  {
+    title: "Keep counts moving",
+    tab: "Inventory",
+    body: "Tap Adjust stock on a supply, choose adding or taking out, and enter the number of units. The preview shows the result. Edit changes its alert threshold. Swipe a card to reveal Remove; use the Undo toast or restore it from Settings.",
+  },
+  {
+    title: "Know when to top up",
+    tab: "Inventory",
+    body: "The bell lists supplies below their individual alert thresholds. Tap View low-stock inventory to filter them. Push alerts require a native build; Expo Go still has the in-app reminders.",
+  },
+  {
+    title: "Find supplies and their history",
+    tab: "Categories",
+    body: "Categories show a supply photo or an illustrated tile. Tap a category to see its inventory. Create or rename categories below the list. Activity records signed quantities, the person who updated stock, and whether a change synced from offline.",
+  },
+  {
+    title: "Work anywhere",
+    tab: "Settings",
+    body: "Changes save on your phone first. Offline stock movements wait in the sync queue and merge as additions or deductions when you reconnect. Settings lets you export CSV or a branded PDF, choose light/dark/device appearance, enable notifications, and replay this guide. Sync pending changes before signing out.",
+  },
+];
+const ThemePalette = React.createContext(palette);
+function ThemedInput(props: React.ComponentProps<typeof TextInput>) {
+  const p = React.useContext(ThemePalette);
+  return (
+    <TextInput
+      placeholderTextColor={p.muted}
+      selectionColor={p.primary}
+      {...props}
+    />
+  );
+}
 function IconLabel({
   icon: Icon,
   children,
   textStyle,
-  color = "#334EAC",
+  color,
 }: {
   icon: LucideIcon;
   children: React.ReactNode;
   textStyle?: React.ComponentProps<typeof Text>["style"];
   color?: string;
 }) {
+  const theme = React.useContext(ThemePalette);
   return (
     <View style={{ flexDirection: "row", alignItems: "center", gap: 7 }}>
-      <Icon size={18} color={color} strokeWidth={2} accessible={false} />
+      <Icon
+        size={18}
+        color={color ?? theme.primary}
+        strokeWidth={2}
+        accessible={false}
+      />
       <Text style={[textStyle, { flexShrink: 1 }]}>{children}</Text>
     </View>
   );
@@ -161,11 +236,23 @@ export default function App() {
   );
 }
 function Pocket() {
-  const systemDark = useColorScheme() === "dark",
-    p = systemDark ? darkPalette : palette,
-    s = useMemo(() => styles(p), [systemDark]);
+  const systemDark = useColorScheme() === "dark";
+  const [appearance, setAppearance] = useState<"system" | "light" | "dark">(
+    "system",
+  );
+  const dark = appearance === "system" ? systemDark : appearance === "dark";
+  const p = dark ? darkPalette : palette;
+  const s = useMemo(() => styles(p), [dark]);
+  const [guide, setGuide] = useState<number | null>(null);
+  const [reminders, setReminders] = useState(false);
+  useEffect(() => {
+    void SecureStore.getItemAsync("stocket.appearance").then((value) => {
+      if (value === "light" || value === "dark") setAppearance(value);
+    });
+  }, []);
+
   const [data, setData] = useState<Snapshot | null>(null),
-    [tab, setTab] = useState("Inventory"),
+    [tab, setTab] = useState("Overview"),
     [query, setQuery] = useState(""),
     [onlyLow, setOnlyLow] = useState(false),
     [category, setCategory] = useState("all"),
@@ -174,6 +261,20 @@ function Pocket() {
     [online, setOnline] = useState(true),
     [syncing, setSyncing] = useState(false),
     [error, setError] = useState("");
+  useEffect(() => {
+    if (!connected || !data) return;
+    let active = true;
+    const key = `stocket.tour.${data.profile.id}`;
+    void SecureStore.getItemAsync(key).then((seen) => {
+      if (active && !seen) {
+        setGuide(0);
+        void SecureStore.setItemAsync(key, "1");
+      }
+    });
+    return () => {
+      active = false;
+    };
+  }, [connected, data?.profile.id]);
   const store = useRef<InventoryStore | null>(null),
     userId = useRef("demo");
   const sync = useCallback(async (quiet = false) => {
@@ -335,648 +436,974 @@ function Pocket() {
       );
     });
   return (
-    <SafeAreaView style={s.safe}>
-      <StatusBar style={systemDark ? "light" : "dark"} />
-      <View style={s.header}>
-        <View style={s.brandRow}>
-          <View style={s.brandMark}>
-            <Wallet
-              size={24}
-              color="#FFF9F0"
-              strokeWidth={2.2}
-              accessible={false}
-            />
-          </View>
-          <Text style={s.brand}>
-            stocket<Text style={{ color: "#CEB5D4" }}>.</Text>
-          </Text>
-        </View>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Workspace settings"
-          style={s.avatar}
-          onPress={() => setTab("Settings")}
-        >
-          <Text style={s.avatarText}>
-            {data?.profile.name.slice(0, 1) ?? "?"}
-          </Text>
-        </Pressable>
-      </View>
-      <ScrollView
-        contentContainerStyle={s.content}
-        keyboardShouldPersistTaps="handled"
-      >
-        <View style={s.workspaceRow}>
-          <Text style={s.eyebrow}>
-            {data?.company.name ?? "YOUR WORKSPACE"}
-          </Text>
-          <Pressable accessibilityRole="button" onPress={() => void sync()}>
-            <IconLabel
-              icon={
-                syncing
-                  ? RefreshCw
-                  : !online
-                    ? CloudOff
-                    : connected
-                      ? Cloud
-                      : Circle
-              }
-              textStyle={s.sync}
-              color={p.primary}
-            >
-              {syncing
-                ? "Syncing…"
-                : !online
-                  ? "Offline"
-                  : connected
-                    ? data?.queue.length
-                      ? `${data.queue.length} pending`
-                      : "Synced"
-                    : "Local demo"}
-            </IconLabel>
-          </Pressable>
-        </View>
-        {!connected && (
-          <Pressable style={s.demo} onPress={() => setForm({ kind: "login" })}>
-            <Text style={s.demoText}>
-              You’re exploring the local demo.{" "}
-              <Text style={{ fontFamily: "Quicksand_700Bold" }}>
-                Connect your company
-              </Text>
-            </Text>
-          </Pressable>
-        )}
-        <View style={s.titleRow}>
-          <Text style={[s.title, { flexShrink: 1 }]}>
-            {tab === "Inventory"
-              ? `Hello, ${data?.profile.name ?? "there"}`
-              : tab === "Activity"
-                ? "The little things, logged"
-                : tab === "Categories"
-                  ? "A place for everything"
-                  : "Your pocket, your way"}
-          </Text>
-          {tab === "Inventory" && (
-            <Sun size={23} color={p.primary} accessible={false} />
-          )}
-        </View>
-        <Text style={s.subtitle}>
-          {tab === "Inventory"
-            ? "Let’s keep the everyday essentials moving."
-            : tab === "Activity"
-              ? "A simple history of your stock changes."
-              : tab === "Categories"
-                ? "Find the right home for every supply."
-                : "A little personal touch for your workspace."}
-        </Text>
-        {!!error && <Text style={s.alertText}>{error}</Text>}
-        {!data && (
-          <Pressable
-            style={s.primary}
-            onPress={() => setForm({ kind: "login" })}
-          >
-            <Text style={s.primaryText}>Sign in to your company</Text>
-          </Pressable>
-        )}
-        {data && tab === "Inventory" && (
-          <>
-            <View style={s.stats}>
-              <View style={s.stat}>
-                <Text style={s.statLabel}>Total supplies</Text>
-                <Text style={s.statNumber}>{active.length}</Text>
-                <Text style={s.muted}>in your pocket</Text>
-              </View>
-              <Pressable
-                style={[s.stat, { backgroundColor: p.alertBg }]}
-                onPress={() => setOnlyLow(!onlyLow)}
-              >
-                <Text style={[s.statLabel, { color: p.alert }]}>
-                  Running low
-                </Text>
-                <Text style={[s.statNumber, { color: p.alert }]}>
-                  {low.length}
-                </Text>
-                <Text style={[s.muted, { color: p.alert }]}>need a top-up</Text>
-              </Pressable>
-            </View>
-            <View style={s.sectionRow}>
-              <Text style={s.sectionTitle}>Your inventory</Text>
-              <Pressable
-                style={s.addButton}
-                onPress={() => setForm({ kind: "add" })}
-              >
-                <IconLabel
-                  icon={Plus}
-                  textStyle={s.primaryText}
-                  color="#FFF9F0"
-                >
-                  Add item
-                </IconLabel>
-              </Pressable>
-            </View>
-            <View style={s.searchField}>
-              <Search size={19} color={p.muted} accessible={false} />
-              <TextInput
-                accessibilityLabel="Search inventory"
-                style={s.searchInput}
-                placeholder="Find a supply…"
-                placeholderTextColor={p.muted}
-                value={query}
-                onChangeText={setQuery}
+    <ThemePalette.Provider value={p}>
+      <SafeAreaView style={s.safe}>
+        <StatusBar style={dark ? "light" : "dark"} />
+        <View style={s.header}>
+          <View style={s.brandRow}>
+            <View style={s.brandMark}>
+              <Wallet
+                size={24}
+                color="#FFF9F0"
+                strokeWidth={2.2}
+                accessible={false}
               />
             </View>
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={s.chips}
+            <Text style={s.brand}>
+              stocket<Text style={{ color: "#CEB5D4" }}>.</Text>
+            </Text>
+          </View>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={`Stock reminders: ${low.length} low-stock supplies`}
+            onPress={() => setReminders(true)}
+            style={{ padding: 10 }}
+          >
+            <Bell size={23} color={p.primary} />
+            <Text style={s.muted}>{low.length}</Text>
+          </Pressable>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Workspace settings"
+            style={s.avatar}
+            onPress={() => setTab("Settings")}
+          >
+            <Text style={s.avatarText}>
+              {data?.profile.name.slice(0, 1) ?? "?"}
+            </Text>
+          </Pressable>
+        </View>
+        <ScrollView
+          contentContainerStyle={s.content}
+          keyboardShouldPersistTaps="handled"
+        >
+          <View style={s.workspaceRow}>
+            <Text style={s.eyebrow}>
+              {data?.company.name ?? "YOUR WORKSPACE"}
+            </Text>
+            <Pressable accessibilityRole="button" onPress={() => void sync()}>
+              <IconLabel
+                icon={
+                  syncing
+                    ? RefreshCw
+                    : !online
+                      ? CloudOff
+                      : connected
+                        ? Cloud
+                        : Circle
+                }
+                textStyle={s.sync}
+                color={p.primary}
+              >
+                {syncing
+                  ? "Syncing…"
+                  : !online
+                    ? "Offline"
+                    : connected
+                      ? data?.queue.length
+                        ? `${data.queue.length} pending`
+                        : "Synced"
+                      : "Local demo"}
+              </IconLabel>
+            </Pressable>
+          </View>
+          {!connected && (
+            <Pressable
+              style={s.demo}
+              onPress={() => setForm({ kind: "login" })}
             >
+              <Text style={s.demoText}>
+                You’re exploring the local demo.{" "}
+                <Text style={{ fontFamily: "Quicksand_700Bold" }}>
+                  Connect your company
+                </Text>
+              </Text>
+            </Pressable>
+          )}
+          <View style={s.titleRow}>
+            <Text style={[s.title, { flexShrink: 1 }]}>
+              {tab === "Inventory" || tab === "Overview"
+                ? `Hello, ${data?.profile.name ?? "there"}`
+                : tab === "Activity"
+                  ? "The little things, logged"
+                  : tab === "Categories"
+                    ? "A place for everything"
+                    : "Your pocket, your way"}
+            </Text>
+            {tab === "Inventory" && (
+              <Sun size={23} color={p.primary} accessible={false} />
+            )}
+          </View>
+          <Text style={s.subtitle}>
+            {tab === "Inventory"
+              ? "Let’s keep the everyday essentials moving."
+              : tab === "Activity"
+                ? "A simple history of your stock changes."
+                : tab === "Categories"
+                  ? "Find the right home for every supply."
+                  : "A little personal touch for your workspace."}
+          </Text>
+          {!!error && <Text style={s.alertText}>{error}</Text>}
+          {!data && (
+            <Pressable
+              style={s.primary}
+              onPress={() => setForm({ kind: "login" })}
+            >
+              <Text style={s.primaryText}>Sign in to your company</Text>
+            </Pressable>
+          )}
+          {data && tab === "Overview" && (
+            <View style={s.settings}>
+              <Text style={s.subtitle}>Your workspace at a glance.</Text>
+              <View style={s.stats}>
+                <View style={s.stat}>
+                  <Text style={s.statLabel}>Supplies</Text>
+                  <Text style={s.statNumber}>{active.length}</Text>
+                </View>
+                <View style={s.stat}>
+                  <Text style={s.statLabel}>Units in stock</Text>
+                  <Text style={s.statNumber}>
+                    {active.reduce((sum, item) => sum + item.quantity, 0)}
+                  </Text>
+                </View>
+              </View>
               <Pressable
-                style={[s.chip, category === "all" && !onlyLow && s.chipActive]}
+                style={[s.secondary, { backgroundColor: p.alertBg }]}
+                onPress={() => setReminders(true)}
+              >
+                <Text style={s.alertText}>
+                  {low.length
+                    ? `${low.length} supplies need a top-up`
+                    : "All supplies are above their alert thresholds"}
+                </Text>
+              </Pressable>
+              <Pressable
+                style={s.primary}
+                onPress={() => setForm({ kind: "add" })}
+              >
+                <Text style={s.primaryText}>Add a supply</Text>
+              </Pressable>
+              <Pressable
+                style={s.secondary}
                 onPress={() => {
-                  setCategory("all");
                   setOnlyLow(false);
+                  setCategory("all");
+                  setQuery("");
+                  setTab("Inventory");
                 }}
               >
-                <Text style={s.chipText}>All supplies</Text>
+                <Text style={s.adjustText}>Browse inventory</Text>
               </Pressable>
-              <Pressable
-                style={[s.chip, onlyLow && s.chipActive]}
-                onPress={() => setOnlyLow(!onlyLow)}
-              >
-                <Text style={s.chipText}>Low stock</Text>
-              </Pressable>
-              {data.categories.map((c) => (
+              <Text style={s.sectionTitle}>Recent movement</Text>
+              {data.events.slice(0, 5).map((event) => (
                 <Pressable
-                  key={c.id}
-                  style={[s.chip, category === c.id && s.chipActive]}
-                  onPress={() => setCategory(category === c.id ? "all" : c.id)}
+                  key={event.id}
+                  style={s.secondary}
+                  onPress={() => setTab("Activity")}
                 >
-                  <Text style={s.chipText}>{c.name}</Text>
+                  <Text style={s.itemName}>
+                    {data.catalog.find(
+                      (c) =>
+                        c.id ===
+                        data.items.find((i) => i.id === event.item_id)
+                          ?.catalog_item_id,
+                    )?.name ?? "Supply"}
+                  </Text>
+                  <Text
+                    style={[
+                      s.quantity,
+                      {
+                        color:
+                          event.delta > 0
+                            ? p.movementPositive
+                            : event.delta < 0
+                              ? p.movementNegative
+                              : p.muted,
+                      },
+                    ]}
+                  >
+                    {event.delta > 0 ? "+" : ""}
+                    {event.delta}
+                  </Text>
+                  <Text style={s.muted}>
+                    Updated by{" "}
+                    {event.created_by === data.profile.id
+                      ? data.profile.name
+                      : (data.people?.find(
+                          (person) => person.id === event.created_by,
+                        )?.name ?? "a teammate")}
+                  </Text>
                 </Pressable>
               ))}
-            </ScrollView>
-            {filtered.map((item) => {
-              const c = data.catalog.find(
-                (c) => c.id === item.catalog_item_id,
-              )!;
-              return (
-                <SwipeItem
-                  key={item.id}
-                  onRemove={() => void remove(item)}
-                  s={s}
-                  onReport={
-                    connected
-                      ? () => setForm({ kind: "report", item })
-                      : undefined
-                  }
-                >
-                  <View style={s.itemRow}>
-                    {c.image_url?.startsWith("data:") ||
-                    c.image_url?.startsWith("http") ||
-                    c.image_url?.startsWith("file:") ? (
-                      <Image
-                        source={{ uri: c.image_url }}
-                        style={s.letterTile}
-                      />
-                    ) : (
-                      <View style={s.letterTile}>
-                        <Text style={s.letterText}>{c.name.slice(0, 1)}</Text>
-                      </View>
-                    )}
-                    <View style={s.itemBody}>
-                      <Text style={s.itemName}>{c.name}</Text>
-                      <Text style={s.muted}>
-                        {
-                          data.categories.find(
-                            (cat) => cat.id === c.category_id,
-                          )?.name
-                        }
-                      </Text>
-                      <View style={s.itemStock}>
-                        <Text
-                          style={[
-                            s.quantity,
-                            isLow(item) && { color: p.alert },
-                          ]}
-                        >
-                          {item.quantity} <Text style={s.muted}>in stock</Text>
-                        </Text>
-                        <Text style={s.muted}>
-                          Min. {item.low_stock_threshold}
-                        </Text>
-                      </View>
-                    </View>
-                  </View>
-                  {isLow(item) && (
-                    <View style={s.lowBadge}>
-                      <IconLabel
-                        icon={TriangleAlert}
-                        textStyle={s.lowPill}
-                        color={p.alert}
-                      >
-                        Running a little low
-                      </IconLabel>
-                    </View>
-                  )}
-                  <View style={s.itemActions}>
-                    <Pressable
-                      style={s.adjust}
-                      onPress={() => setForm({ kind: "adjust", item })}
-                    >
-                      <IconLabel icon={Plus} textStyle={s.adjustText}>
-                        Adjust stock
-                      </IconLabel>
-                    </Pressable>
-                    <Pressable
-                      accessibilityLabel={`Edit threshold for ${c.name}`}
-                      style={s.editAction}
-                      onPress={() => setForm({ kind: "edit", item })}
-                    >
-                      <Text style={s.muted}>Edit</Text>
-                    </Pressable>
-                  </View>
-                </SwipeItem>
-              );
-            })}
-            {!filtered.length && (
-              <View style={s.empty}>
-                <Text style={s.sectionTitle}>Nothing in this pocket yet.</Text>
-                <Text style={s.subtitle}>
-                  Try clearing filters, or add your first supply.
+              {!data.events.length && (
+                <Text style={s.muted}>
+                  Your stock movements will appear here.
                 </Text>
+              )}
+              <Pressable style={s.secondary} onPress={() => setGuide(0)}>
+                <Text style={s.adjustText}>Get to know your pocket</Text>
+              </Pressable>
+            </View>
+          )}
+          {data && tab === "Inventory" && (
+            <>
+              <View style={s.stats}>
+                <View style={s.stat}>
+                  <Text style={s.statLabel}>Total supplies</Text>
+                  <Text style={s.statNumber}>{active.length}</Text>
+                  <Text style={s.muted}>in your pocket</Text>
+                </View>
                 <Pressable
-                  style={s.primary}
-                  onPress={() => {
-                    if (active.length) {
-                      setQuery("");
-                      setOnlyLow(false);
-                      setCategory("all");
-                    } else setForm({ kind: "add" });
-                  }}
+                  style={[s.stat, { backgroundColor: p.alertBg }]}
+                  onPress={() => setOnlyLow(!onlyLow)}
                 >
-                  <Text style={s.primaryText}>
-                    {active.length ? "Clear filters" : "Add item"}
+                  <Text style={[s.statLabel, { color: p.alert }]}>
+                    Running low
+                  </Text>
+                  <Text style={[s.statNumber, { color: p.alert }]}>
+                    {low.length}
+                  </Text>
+                  <Text style={[s.muted, { color: p.alert }]}>
+                    need a top-up
                   </Text>
                 </Pressable>
               </View>
-            )}
-            <View style={s.footerRow}>
-              <Text style={s.footer}>
-                Your stock levels stay inside your company.
+              <View style={s.sectionRow}>
+                <Text style={s.sectionTitle}>Your inventory</Text>
+                <Pressable
+                  style={s.addButton}
+                  onPress={() => setForm({ kind: "add" })}
+                >
+                  <IconLabel
+                    icon={Plus}
+                    textStyle={s.primaryText}
+                    color="#FFF9F0"
+                  >
+                    Add item
+                  </IconLabel>
+                </Pressable>
+              </View>
+              <View style={s.searchField}>
+                <Search size={19} color={p.muted} accessible={false} />
+                <ThemedInput
+                  accessibilityLabel="Search inventory"
+                  style={s.searchInput}
+                  placeholder="Find a supply…"
+                  placeholderTextColor={p.muted}
+                  value={query}
+                  onChangeText={setQuery}
+                />
+              </View>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={s.chips}
+              >
+                <Pressable
+                  style={[
+                    s.chip,
+                    category === "all" && !onlyLow && s.chipActive,
+                  ]}
+                  onPress={() => {
+                    setCategory("all");
+                    setOnlyLow(false);
+                  }}
+                >
+                  <Text style={s.chipText}>All supplies</Text>
+                </Pressable>
+                <Pressable
+                  style={[s.chip, onlyLow && s.chipActive]}
+                  onPress={() => setOnlyLow(!onlyLow)}
+                >
+                  <Text style={s.chipText}>Low stock</Text>
+                </Pressable>
+                {data.categories.map((c) => (
+                  <Pressable
+                    key={c.id}
+                    style={[s.chip, category === c.id && s.chipActive]}
+                    onPress={() =>
+                      setCategory(category === c.id ? "all" : c.id)
+                    }
+                  >
+                    <Text style={s.chipText}>{c.name}</Text>
+                  </Pressable>
+                ))}
+              </ScrollView>
+              {filtered.map((item) => {
+                const c = data.catalog.find(
+                  (c) => c.id === item.catalog_item_id,
+                )!;
+                return (
+                  <SwipeItem
+                    key={item.id}
+                    onRemove={() => void remove(item)}
+                    s={s}
+                    onReport={
+                      connected
+                        ? () => setForm({ kind: "report", item })
+                        : undefined
+                    }
+                  >
+                    <View style={s.itemRow}>
+                      {c.image_url?.startsWith("data:") ||
+                      c.image_url?.startsWith("http") ||
+                      c.image_url?.startsWith("file:") ? (
+                        <Image
+                          source={{ uri: c.image_url }}
+                          style={s.letterTile}
+                        />
+                      ) : (
+                        <View style={s.letterTile}>
+                          <Text style={s.letterText}>{c.name.slice(0, 1)}</Text>
+                        </View>
+                      )}
+                      <View style={s.itemBody}>
+                        <Text style={s.itemName}>{c.name}</Text>
+                        <Text style={s.muted}>
+                          {
+                            data.categories.find(
+                              (cat) => cat.id === c.category_id,
+                            )?.name
+                          }
+                        </Text>
+                        <View style={s.itemStock}>
+                          <Text
+                            style={[
+                              s.quantity,
+                              isLow(item) && { color: p.alert },
+                            ]}
+                          >
+                            {item.quantity}{" "}
+                            <Text style={s.muted}>in stock</Text>
+                          </Text>
+                          <Text style={s.muted}>
+                            Min. {item.low_stock_threshold}
+                          </Text>
+                        </View>
+                      </View>
+                    </View>
+                    {isLow(item) && (
+                      <View style={s.lowBadge}>
+                        <IconLabel
+                          icon={TriangleAlert}
+                          textStyle={s.lowPill}
+                          color={p.alert}
+                        >
+                          Running a little low
+                        </IconLabel>
+                      </View>
+                    )}
+                    <View style={s.itemActions}>
+                      <Pressable
+                        style={s.adjust}
+                        onPress={() => setForm({ kind: "adjust", item })}
+                      >
+                        <IconLabel icon={Plus} textStyle={s.adjustText}>
+                          Adjust stock
+                        </IconLabel>
+                      </Pressable>
+                      <Pressable
+                        accessibilityLabel={`Edit threshold for ${c.name}`}
+                        style={s.editAction}
+                        onPress={() => setForm({ kind: "edit", item })}
+                      >
+                        <Text style={s.muted}>Edit</Text>
+                      </Pressable>
+                    </View>
+                  </SwipeItem>
+                );
+              })}
+              {!filtered.length && (
+                <View style={s.empty}>
+                  <Text style={s.sectionTitle}>
+                    Nothing in this pocket yet.
+                  </Text>
+                  <Text style={s.subtitle}>
+                    Try clearing filters, or add your first supply.
+                  </Text>
+                  <Pressable
+                    style={s.primary}
+                    onPress={() => {
+                      if (active.length) {
+                        setQuery("");
+                        setOnlyLow(false);
+                        setCategory("all");
+                      } else setForm({ kind: "add" });
+                    }}
+                  >
+                    <Text style={s.primaryText}>
+                      {active.length ? "Clear filters" : "Add item"}
+                    </Text>
+                  </Pressable>
+                </View>
+              )}
+              <View style={s.footerRow}>
+                <Text style={s.footer}>
+                  Your stock levels stay inside your company.
+                </Text>
+                <Heart size={14} color={p.muted} accessible={false} />
+              </View>
+            </>
+          )}
+          {data &&
+            tab === "Activity" &&
+            data.events.map((e) => (
+              <View key={e.id} style={s.activityRow}>
+                <Text
+                  style={[
+                    s.quantity,
+                    {
+                      color:
+                        e.delta > 0
+                          ? p.movementPositive
+                          : e.delta < 0
+                            ? p.movementNegative
+                            : p.muted,
+                    },
+                  ]}
+                >
+                  {e.delta > 0 ? "+" : ""}
+                  {e.delta}
+                </Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={s.itemName}>
+                    {data.catalog.find(
+                      (c) =>
+                        c.id ===
+                        data.items.find((i) => i.id === e.item_id)
+                          ?.catalog_item_id,
+                    )?.name ?? "Supply"}
+                  </Text>
+                  <Text style={s.muted}>
+                    Updated by{" "}
+                    {e.created_by === data.profile.id
+                      ? data.profile.name
+                      : (data.people?.find(
+                          (person) => person.id === e.created_by,
+                        )?.name ?? "a teammate")}
+                  </Text>
+                  <Text style={s.muted}>
+                    {new Date(e.created_at).toLocaleString()}
+                  </Text>
+                  <Text style={s.muted}>
+                    {e.source === "synced_offline"
+                      ? "Synced from offline"
+                      : "Stock updated"}
+                  </Text>
+                </View>
+              </View>
+            ))}
+          {data &&
+            tab === "Categories" &&
+            data.categories.map((c) => (
+              <Pressable
+                key={c.id}
+                style={s.category}
+                onPress={() => {
+                  setCategory(c.id);
+                  setTab("Inventory");
+                }}
+              >
+                <View style={s.categoryTitle}>
+                  {data.catalog.find(
+                    (item) => item.category_id === c.id && item.image_url,
+                  )?.image_url ? (
+                    <Image
+                      source={{
+                        uri: data.catalog.find(
+                          (item) => item.category_id === c.id && item.image_url,
+                        )!.image_url!,
+                      }}
+                      style={{ width: 58, height: 58, borderRadius: 12 }}
+                    />
+                  ) : (
+                    <View style={[s.letterTile, { height: 58 }]}>
+                      <CategoryArt name={c.name} />
+                    </View>
+                  )}
+
+                  <Text style={[s.sectionTitle, { flex: 1 }]}>{c.name}</Text>
+                  <ArrowRight size={20} color={p.primary} accessible={false} />
+                </View>
+                <Text style={s.muted}>
+                  {
+                    active.filter(
+                      (i) =>
+                        data.catalog.find((cat) => cat.id === i.catalog_item_id)
+                          ?.category_id === c.id,
+                    ).length
+                  }{" "}
+                  supplies in stock
+                </Text>
+              </Pressable>
+            ))}
+          {data && tab === "Categories" && (
+            <MobileCategoryEditor
+              s={s}
+              categories={data.categories}
+              onSave={(c) =>
+                mutate({ kind: "category", item_id: c.id, category: c })
+              }
+            />
+          )}
+          {data && tab === "Settings" && (
+            <View style={s.settings}>
+              <Text style={s.sectionTitle}>Appearance</Text>
+              <View style={s.chipsWrap}>
+                {(["system", "light", "dark"] as const).map((mode) => (
+                  <Pressable
+                    key={mode}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: appearance === mode }}
+                    style={[s.chip, appearance === mode && s.chipActive]}
+                    onPress={() => {
+                      setAppearance(mode);
+                      void SecureStore.setItemAsync("stocket.appearance", mode);
+                    }}
+                  >
+                    <Text style={s.chipText}>
+                      {mode === "system"
+                        ? "Use device"
+                        : mode === "dark"
+                          ? "Dark mode"
+                          : "Light mode"}
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+              <Pressable style={s.secondary} onPress={() => setGuide(0)}>
+                <Text style={s.adjustText}>Help & getting started</Text>
+              </Pressable>
+              <Text style={s.sectionTitle}>{data.company.name}</Text>
+              <Text style={s.subtitle}>
+                {data.profile.name} · {data.profile.email}
               </Text>
-              <Heart size={14} color={p.muted} accessible={false} />
+              <Text style={s.muted}>
+                Signed in on {data.profile.device_info}
+              </Text>
+              <Text style={s.muted}>
+                {data.queue.length} changes waiting to sync
+              </Text>
+              <Pressable
+                style={s.secondary}
+                onPress={() => void exportStock(false)}
+              >
+                <Text style={s.adjustText}>Export CSV</Text>
+              </Pressable>
+              <Pressable
+                style={s.secondary}
+                onPress={() => void exportStock(true)}
+              >
+                <Text style={s.adjustText}>Export PDF</Text>
+              </Pressable>
+              {connected && (
+                <>
+                  <Pressable
+                    style={s.secondary}
+                    onPress={async () => {
+                      try {
+                        await enableNotifications();
+                        notify("Low-stock notifications are ready.");
+                      } catch (e) {
+                        notify((e as Error).message, "error");
+                      }
+                    }}
+                  >
+                    <Text style={s.adjustText}>
+                      {isExpoGo
+                        ? "About push alerts in Expo Go"
+                        : "Enable low-stock notifications"}
+                    </Text>
+                  </Pressable>
+                  <Pressable
+                    style={s.secondary}
+                    onPress={() =>
+                      void nativePasskey(true)
+                        .then(() =>
+                          notify("Your passkey is ready for next time."),
+                        )
+                        .catch((e) => notify(e.message, "error"))
+                    }
+                  >
+                    <Text style={s.adjustText}>
+                      Set up Face ID / fingerprint
+                    </Text>
+                  </Pressable>
+                  <Pressable
+                    style={s.secondary}
+                    onPress={async () => {
+                      if (data.queue.length) {
+                        notify(
+                          "Sync pending changes before signing out.",
+                          "error",
+                        );
+                        return;
+                      }
+                      try {
+                        await disableNotifications();
+                      } catch (e) {
+                        notify((e as Error).message, "error");
+                        return;
+                      }
+                      const { error } = await supabase!.auth.signOut();
+                      if (error) {
+                        notify(error.message, "error");
+                        return;
+                      }
+                      await persistence(userId.current).clear();
+                      await boot();
+                    }}
+                  >
+                    <Text style={{ ...s.adjustText, color: p.alert }}>
+                      Sign out
+                    </Text>
+                  </Pressable>
+                </>
+              )}
+              {!connected && (
+                <Pressable
+                  style={s.primary}
+                  onPress={() => setForm({ kind: "login" })}
+                >
+                  <Text style={s.primaryText}>Connect your company</Text>
+                </Pressable>
+              )}
+              {!!data.items.filter((i) => i.archived_at).length && (
+                <>
+                  <Text style={s.sectionTitle}>Removed items</Text>
+                  {data.items
+                    .filter((i) => i.archived_at)
+                    .map((i) => (
+                      <Pressable
+                        key={i.id}
+                        style={s.secondary}
+                        onPress={() =>
+                          void mutate({
+                            kind: "archive",
+                            item_id: i.id,
+                            archived: false,
+                          })
+                            .then(() => notify("Item restored."))
+                            .catch((e) => notify(e.message, "error"))
+                        }
+                      >
+                        <Text style={s.adjustText}>
+                          Restore{" "}
+                          {
+                            data.catalog.find((c) => c.id === i.catalog_item_id)
+                              ?.name
+                          }
+                        </Text>
+                      </Pressable>
+                    ))}
+                </>
+              )}
             </View>
-          </>
-        )}
-        {data &&
-          tab === "Activity" &&
-          data.events.map((e) => (
-            <View key={e.id} style={s.activityRow}>
+          )}
+        </ScrollView>
+        <View style={s.bottomNav}>
+          {(
+            [
+              ["Overview", LayoutDashboard],
+              ["Inventory", Package],
+              ["Categories", Grid2X2],
+              ["Activity", History],
+              ["Settings", Settings],
+            ] as const
+          ).map(([name, Icon]) => (
+            <Pressable
+              key={name}
+              accessibilityRole="tab"
+              accessibilityLabel={name}
+              accessibilityState={{ selected: tab === name }}
+              onPress={() => setTab(name)}
+              style={s.navItem}
+            >
+              <Icon
+                size={24}
+                color={tab === name ? p.primary : p.muted}
+                strokeWidth={2}
+                accessible={false}
+              />
               <Text
                 style={[
-                  s.quantity,
-                  {
-                    color:
-                      e.delta > 0
-                        ? p.movementPositive
-                        : e.delta < 0
-                          ? p.movementNegative
-                          : p.muted,
+                  s.navText,
+                  tab === name && {
+                    color: p.primary,
+                    fontFamily: "Quicksand_700Bold",
                   },
                 ]}
               >
-                {e.delta > 0 ? "+" : ""}
-                {e.delta}
-              </Text>
-              <View style={{ flex: 1 }}>
-                <Text style={s.itemName}>
-                  {data.catalog.find(
-                    (c) =>
-                      c.id ===
-                      data.items.find((i) => i.id === e.item_id)
-                        ?.catalog_item_id,
-                  )?.name ?? "Supply"}
-                </Text>
-                <Text style={s.muted}>
-                  {new Date(e.created_at).toLocaleString()}
-                </Text>
-                <Text style={s.muted}>
-                  {e.source === "synced_offline"
-                    ? "Synced from offline"
-                    : "Stock updated"}
-                </Text>
-              </View>
-            </View>
-          ))}
-        {data &&
-          tab === "Categories" &&
-          data.categories.map((c) => (
-            <Pressable
-              key={c.id}
-              style={s.category}
-              onPress={() => {
-                setCategory(c.id);
-                setTab("Inventory");
-              }}
-            >
-              <View style={s.categoryTitle}>
-                <Text style={[s.sectionTitle, { flex: 1 }]}>{c.name}</Text>
-                <ArrowRight size={20} color={p.primary} accessible={false} />
-              </View>
-              <Text style={s.muted}>
-                {
-                  active.filter(
-                    (i) =>
-                      data.catalog.find((cat) => cat.id === i.catalog_item_id)
-                        ?.category_id === c.id,
-                  ).length
-                }{" "}
-                supplies in stock
+                {name}
               </Text>
             </Pressable>
           ))}
-        {data && tab === "Categories" && (
-          <MobileCategoryEditor
-            s={s}
-            categories={data.categories}
-            onSave={(c) =>
-              mutate({ kind: "category", item_id: c.id, category: c })
-            }
-          />
-        )}
-        {data && tab === "Settings" && (
-          <View style={s.settings}>
-            <Text style={s.sectionTitle}>{data.company.name}</Text>
-            <Text style={s.subtitle}>
-              {data.profile.name} · {data.profile.email}
-            </Text>
-            <Text style={s.muted}>Signed in on {data.profile.device_info}</Text>
-            <Text style={s.muted}>
-              {data.queue.length} changes waiting to sync
-            </Text>
-            <Pressable
-              style={s.secondary}
-              onPress={() => void exportStock(false)}
-            >
-              <Text style={s.adjustText}>Export CSV</Text>
-            </Pressable>
-            <Pressable
-              style={s.secondary}
-              onPress={() => void exportStock(true)}
-            >
-              <Text style={s.adjustText}>Export PDF</Text>
-            </Pressable>
-            {connected && (
-              <>
+        </View>
+        <Modal
+          visible={reminders || guide !== null}
+          animationType="slide"
+          presentationStyle="pageSheet"
+          onRequestClose={() => {
+            setReminders(false);
+            setGuide(null);
+          }}
+        >
+          <SafeAreaView style={s.safe}>
+            <ScrollView contentContainerStyle={s.content}>
+              <View style={s.sectionRow}>
+                <Text style={[s.sectionTitle, { flex: 1 }]}>
+                  {reminders ? "Stock reminders" : "Your pocket, explained"}
+                </Text>
                 <Pressable
-                  style={s.secondary}
-                  onPress={async () => {
-                    try {
-                      await enableNotifications();
-                      notify("Low-stock notifications are ready.");
-                    } catch (e) {
-                      notify((e as Error).message, "error");
-                    }
+                  accessibilityLabel="Close guide or reminders"
+                  onPress={() => {
+                    setReminders(false);
+                    setGuide(null);
                   }}
                 >
-                  <Text style={s.adjustText}>
-                    {isExpoGo
-                      ? "About push alerts in Expo Go"
-                      : "Enable low-stock notifications"}
+                  <Text style={s.adjustText}>Close</Text>
+                </Pressable>
+              </View>
+              {reminders ? (
+                <View style={s.form}>
+                  <Text style={s.subtitle}>
+                    {low.length
+                      ? `${low.length} supplies are below their alert thresholds.`
+                      : "Looking good — no supplies are running low."}
                   </Text>
-                </Pressable>
-                <Pressable
-                  style={s.secondary}
-                  onPress={() =>
-                    void nativePasskey(true)
-                      .then(() =>
-                        notify("Your passkey is ready for next time."),
-                      )
-                      .catch((e) => notify(e.message, "error"))
-                  }
-                >
-                  <Text style={s.adjustText}>Set up Face ID / fingerprint</Text>
-                </Pressable>
-                <Pressable
-                  style={s.secondary}
-                  onPress={async () => {
-                    if (data.queue.length) {
-                      notify(
-                        "Sync pending changes before signing out.",
-                        "error",
-                      );
-                      return;
-                    }
-                    try {
-                      await disableNotifications();
-                    } catch (e) {
-                      notify((e as Error).message, "error");
-                      return;
-                    }
-                    const { error } = await supabase!.auth.signOut();
-                    if (error) {
-                      notify(error.message, "error");
-                      return;
-                    }
-                    await persistence(userId.current).clear();
-                    await boot();
-                  }}
-                >
-                  <Text style={{ ...s.adjustText, color: p.alert }}>
-                    Sign out
-                  </Text>
-                </Pressable>
-              </>
-            )}
-            {!connected && (
-              <Pressable
-                style={s.primary}
-                onPress={() => setForm({ kind: "login" })}
-              >
-                <Text style={s.primaryText}>Connect your company</Text>
-              </Pressable>
-            )}
-            {!!data.items.filter((i) => i.archived_at).length && (
-              <>
-                <Text style={s.sectionTitle}>Removed items</Text>
-                {data.items
-                  .filter((i) => i.archived_at)
-                  .map((i) => (
-                    <Pressable
-                      key={i.id}
-                      style={s.secondary}
-                      onPress={() =>
-                        void mutate({
-                          kind: "archive",
-                          item_id: i.id,
-                          archived: false,
-                        })
-                          .then(() => notify("Item restored."))
-                          .catch((e) => notify(e.message, "error"))
-                      }
-                    >
-                      <Text style={s.adjustText}>
-                        Restore{" "}
+                  {low.map((item) => (
+                    <View key={item.id} style={s.category}>
+                      <Text style={s.itemName}>
                         {
-                          data.catalog.find((c) => c.id === i.catalog_item_id)
-                            ?.name
+                          data?.catalog.find(
+                            (c) => c.id === item.catalog_item_id,
+                          )?.name
                         }
                       </Text>
-                    </Pressable>
+                      <Text style={s.alertText}>
+                        {item.quantity} left · alert below{" "}
+                        {item.low_stock_threshold}
+                      </Text>
+                    </View>
                   ))}
-              </>
-            )}
-          </View>
-        )}
-      </ScrollView>
-      <View style={s.bottomNav}>
-        {(
-          [
-            ["Inventory", Package],
-            ["Categories", Grid2X2],
-            ["Activity", History],
-            ["Settings", Settings],
-          ] as const
-        ).map(([name, Icon]) => (
-          <Pressable
-            key={name}
-            accessibilityRole="tab"
-            accessibilityLabel={name}
-            accessibilityState={{ selected: tab === name }}
-            onPress={() => setTab(name)}
-            style={s.navItem}
-          >
-            <Icon
-              size={24}
-              color={tab === name ? p.primary : p.muted}
-              strokeWidth={2}
-              accessible={false}
-            />
-            <Text
-              style={[
-                s.navText,
-                tab === name && {
-                  color: p.primary,
-                  fontFamily: "Quicksand_700Bold",
-                },
-              ]}
+                  {!!low.length && (
+                    <Pressable
+                      style={s.primary}
+                      onPress={() => {
+                        setQuery("");
+                        setCategory("all");
+                        setOnlyLow(true);
+                        setTab("Inventory");
+                        setReminders(false);
+                      }}
+                    >
+                      <Text style={s.primaryText}>
+                        View low-stock inventory
+                      </Text>
+                    </Pressable>
+                  )}
+                </View>
+              ) : (
+                guide !== null && (
+                  <View style={s.form}>
+                    <Text style={s.muted}>
+                      Step {guide + 1} of {pocketGuide.length}
+                    </Text>
+                    <Text style={s.title}>{pocketGuide[guide].title}</Text>
+                    <Text style={s.subtitle}>{pocketGuide[guide].body}</Text>
+                    <View style={s.chipsWrap}>
+                      {pocketGuide.map((step, index) => (
+                        <Pressable
+                          key={step.title}
+                          style={[s.chip, index === guide && s.chipActive]}
+                          onPress={() => setGuide(index)}
+                        >
+                          <Text style={s.chipText}>{index + 1}</Text>
+                        </Pressable>
+                      ))}
+                    </View>
+                    <Pressable
+                      style={s.secondary}
+                      onPress={() => {
+                        setTab(pocketGuide[guide].tab);
+                        setGuide(null);
+                      }}
+                    >
+                      <Text style={s.adjustText}>
+                        Open {pocketGuide[guide].tab}
+                      </Text>
+                    </Pressable>
+                    <Pressable
+                      style={s.primary}
+                      onPress={() => {
+                        if (guide < pocketGuide.length - 1) setGuide(guide + 1);
+                        else {
+                          void SecureStore.setItemAsync(
+                            `stocket.tour.${userId.current}`,
+                            "1",
+                          );
+                          setGuide(null);
+                          notify("You're ready to keep things moving.");
+                        }
+                      }}
+                    >
+                      <Text style={s.primaryText}>
+                        {guide === pocketGuide.length - 1
+                          ? "Ready to go"
+                          : "Next step"}
+                      </Text>
+                    </Pressable>
+                  </View>
+                )
+              )}
+            </ScrollView>
+          </SafeAreaView>
+        </Modal>
+        <Modal
+          visible={!!form}
+          animationType="slide"
+          presentationStyle="pageSheet"
+          onRequestClose={() => setForm(null)}
+        >
+          <SafeAreaView style={s.safe}>
+            <ScrollView
+              contentContainerStyle={s.content}
+              keyboardShouldPersistTaps="handled"
             >
-              {name}
-            </Text>
-          </Pressable>
-        ))}
-      </View>
-      <Modal
-        visible={!!form}
-        animationType="slide"
-        presentationStyle="pageSheet"
-        onRequestClose={() => setForm(null)}
-      >
-        <SafeAreaView style={s.safe}>
-          <ScrollView
-            contentContainerStyle={s.content}
-            keyboardShouldPersistTaps="handled"
-          >
-            <View style={s.sectionRow}>
-              <Text style={s.sectionTitle}>
-                {form?.kind === "login"
-                  ? "Welcome to Stocket"
-                  : form?.kind === "add"
-                    ? "A new addition"
-                    : "A little stock update"}
-              </Text>
-              <Pressable
-                accessibilityLabel="Close form"
-                onPress={() => setForm(null)}
-              >
-                <Text style={s.adjustText}>Close</Text>
-              </Pressable>
-            </View>
-            {form?.kind === "login" ? (
-              <MobileLogin
-                s={s}
-                onDone={() => {
-                  setForm(null);
-                  void boot();
-                }}
-              />
-            ) : form?.kind === "report" && data ? (
-              <MobileReport
-                s={s}
-                catalogId={form.item.catalog_item_id}
-                onDone={() => setForm(null)}
-              />
-            ) : (
-              form &&
-              form.kind !== "report" &&
-              data && (
-                <MobileForm
+              <View style={s.sectionRow}>
+                <Text style={s.sectionTitle}>
+                  {form?.kind === "login"
+                    ? "Welcome to Stocket"
+                    : form?.kind === "add"
+                      ? "A new addition"
+                      : "A little stock update"}
+                </Text>
+                <Pressable
+                  accessibilityLabel="Close form"
+                  onPress={() => setForm(null)}
+                >
+                  <Text style={s.adjustText}>Close</Text>
+                </Pressable>
+              </View>
+              {form?.kind === "login" ? (
+                <MobileLogin
                   s={s}
-                  form={form}
-                  data={data}
-                  connected={connected}
-                  onCreateCategory={async (name, parent) => {
-                    const c = {
-                      id: Crypto.randomUUID(),
-                      name,
-                      parent_id: parent,
-                    };
-                    await mutate({
-                      kind: "category",
-                      item_id: c.id,
-                      category: c,
-                    });
-                    return c;
-                  }}
-                  onSave={async (fields) => {
-                    const next = await mutate(fields);
+                  onDone={() => {
                     setForm(null);
-                    notify(`Nice one, ${data.profile.name} — stock updated.`);
-                    const item = next.items.find(
-                      (i) => i.id === fields.item_id,
-                    );
-                    if (item && isLow(item))
-                      setTimeout(
-                        () => notify("This supply could use a top-up.", "info"),
-                        900,
-                      );
+                    void boot();
                   }}
                 />
-              )
-            )}
-          </ScrollView>
-        </SafeAreaView>
-      </Modal>
-      <Toast
-        config={{
-          success: (props) => (
-            <BaseToast
-              {...props}
-              style={{ borderLeftColor: "#334EAC", backgroundColor: p.surface }}
-              text1Style={{
-                fontFamily: "Quicksand_600SemiBold",
-                fontSize: 16,
-                color: p.text,
-              }}
-              text1NumberOfLines={3}
-            />
-          ),
-          undo: ({ text1, props }) => (
-            <View style={s.undoToast}>
-              <Text style={s.undoText}>{text1}</Text>
-              <Pressable
-                onPress={() => {
-                  props.onUndo();
-                  Toast.hide();
+              ) : form?.kind === "report" && data ? (
+                <MobileReport
+                  s={s}
+                  catalogId={form.item.catalog_item_id}
+                  onDone={() => setForm(null)}
+                />
+              ) : (
+                form &&
+                form.kind !== "report" &&
+                data && (
+                  <MobileForm
+                    s={s}
+                    form={form}
+                    data={data}
+                    connected={connected}
+                    onCreateCategory={async (name, parent) => {
+                      const c = {
+                        id: Crypto.randomUUID(),
+                        name,
+                        parent_id: parent,
+                      };
+                      await mutate({
+                        kind: "category",
+                        item_id: c.id,
+                        category: c,
+                      });
+                      return c;
+                    }}
+                    onSave={async (fields) => {
+                      const next = await mutate(fields);
+                      setForm(null);
+                      notify(`Nice one, ${data.profile.name} — stock updated.`);
+                      const item = next.items.find(
+                        (i) => i.id === fields.item_id,
+                      );
+                      if (item && isLow(item))
+                        setTimeout(
+                          () =>
+                            notify("This supply could use a top-up.", "info"),
+                          900,
+                        );
+                    }}
+                  />
+                )
+              )}
+            </ScrollView>
+          </SafeAreaView>
+        </Modal>
+        <Toast
+          config={{
+            success: (props) => (
+              <BaseToast
+                {...props}
+                style={{
+                  borderLeftColor: "#334EAC",
+                  backgroundColor: p.surface,
                 }}
-              >
-                <Text style={s.undoAction}>Undo</Text>
-              </Pressable>
-            </View>
-          ),
-        }}
-      />
-    </SafeAreaView>
+                text1Style={{
+                  fontFamily: "Quicksand_600SemiBold",
+                  fontSize: 16,
+                  color: p.text,
+                }}
+                text1NumberOfLines={3}
+              />
+            ),
+            error: (props) => (
+              <BaseToast
+                {...props}
+                style={{ borderLeftColor: p.alert, backgroundColor: p.surface }}
+                text1Style={{
+                  fontFamily: "Quicksand_600SemiBold",
+                  fontSize: 16,
+                  color: p.text,
+                }}
+                text2Style={{ color: p.muted, fontSize: 14 }}
+                text1NumberOfLines={4}
+              />
+            ),
+            info: (props) => (
+              <BaseToast
+                {...props}
+                style={{
+                  borderLeftColor: p.primary,
+                  backgroundColor: p.surface,
+                }}
+                text1Style={{
+                  fontFamily: "Quicksand_600SemiBold",
+                  fontSize: 16,
+                  color: p.text,
+                }}
+                text2Style={{ color: p.muted, fontSize: 14 }}
+                text1NumberOfLines={4}
+              />
+            ),
+            undo: ({ text1, props }) => (
+              <View style={s.undoToast}>
+                <Text style={s.undoText}>{text1}</Text>
+                <Pressable
+                  onPress={() => {
+                    props.onUndo();
+                    Toast.hide();
+                  }}
+                >
+                  <Text style={s.undoAction}>Undo</Text>
+                </Pressable>
+              </View>
+            ),
+          }}
+        />
+      </SafeAreaView>
+    </ThemePalette.Provider>
   );
 }
 function SwipeItem({
@@ -1053,7 +1480,7 @@ function MobileReport({
       <Text style={s.subtitle}>
         Tell us what needs fixing about this item’s name or photo.
       </Text>
-      <TextInput
+      <ThemedInput
         style={s.input}
         accessibilityLabel="Report reason"
         multiline
@@ -1125,12 +1552,23 @@ function MobileForm({
     [busy, setBusy] = useState(false),
     [categoryName, setCategoryName] = useState(""),
     [categoryParent, setCategoryParent] = useState<string | null>(null);
-  async function camera() {
+  async function camera(fromLibrary = false) {
     try {
-      const permission = await ImagePicker.requestCameraPermissionsAsync();
+      const permission = fromLibrary
+        ? await ImagePicker.requestMediaLibraryPermissionsAsync()
+        : await ImagePicker.requestCameraPermissionsAsync();
       if (!permission.granted)
-        throw new Error("Camera permission is needed for a photo.");
-      const shot = await ImagePicker.launchCameraAsync({ quality: 0.8 });
+        throw new Error(
+          fromLibrary
+            ? "Photo library permission is needed to choose a photo."
+            : "Camera permission is needed for a photo.",
+        );
+      const shot = fromLibrary
+        ? await ImagePicker.launchImageLibraryAsync({
+            quality: 0.8,
+            mediaTypes: ["images"],
+          })
+        : await ImagePicker.launchCameraAsync({ quality: 0.8 });
       if (shot.canceled) return;
       const image = shot.assets[0];
       const resized = await ImageManipulator.manipulateAsync(
@@ -1155,6 +1593,7 @@ function MobileForm({
       notify((e as Error).message, "error");
     }
   }
+  const addition = resolveStockAddition(data, name, selected);
   return (
     <View style={s.form}>
       {form.kind === "add" ? (
@@ -1162,8 +1601,18 @@ function MobileForm({
           <Text style={s.subtitle}>
             Search the shared catalog first. The details may already be ready.
           </Text>
+          {addition.item && (
+            <Text style={s.muted}>
+              Already in your stock: {addition.item.quantity} units. This adds
+              units and keeps your current alert threshold
+              {addition.item.archived_at
+                ? "; the item will also be restored"
+                : ""}
+              .
+            </Text>
+          )}
           <Text style={s.label}>Item name</Text>
-          <TextInput
+          <ThemedInput
             style={s.input}
             placeholder="Printer paper A4"
             value={name}
@@ -1189,7 +1638,7 @@ function MobileForm({
                 </IconLabel>
               </Pressable>
             ))}
-          {selected && (
+          {addition.catalog && (
             <IconLabel icon={Check} textStyle={s.adjustText}>
               Linked to the shared catalog
             </IconLabel>
@@ -1199,17 +1648,21 @@ function MobileForm({
             {data.categories.map((c) => (
               <Pressable
                 key={c.id}
-                disabled={!!selected}
-                style={[s.chip, cat === c.id && s.chipActive]}
+                disabled={!!addition.catalog}
+                style={[
+                  s.chip,
+                  (addition.catalog?.category_id ?? cat) === c.id &&
+                    s.chipActive,
+                ]}
                 onPress={() => setCat(c.id)}
               >
                 <Text style={s.chipText}>{c.name}</Text>
               </Pressable>
             ))}
           </View>
-          {!selected && (
+          {!addition.catalog && (
             <>
-              <TextInput
+              <ThemedInput
                 style={s.input}
                 placeholder="New category name (optional)"
                 value={categoryName}
@@ -1230,9 +1683,14 @@ function MobileForm({
                 <Text style={s.adjustText}>Create category</Text>
               </Pressable>
               <Pressable style={s.secondary} onPress={() => void camera()}>
-                <Text style={s.adjustText}>
-                  ▣ {photo ? "Retake photo" : "Take a photo"}
-                </Text>
+                <IconLabel icon={Camera} textStyle={s.adjustText}>
+                  {photo ? "Retake photo" : "Take a photo"}
+                </IconLabel>
+              </Pressable>
+              <Pressable style={s.secondary} onPress={() => void camera(true)}>
+                <IconLabel icon={Camera} textStyle={s.adjustText}>
+                  Choose a photo
+                </IconLabel>
               </Pressable>
               {photo && (
                 <Image
@@ -1311,7 +1769,7 @@ function MobileForm({
             Catalog names and categories are shared across companies. Your stock
             threshold stays private.
           </Text>
-          <TextInput
+          <ThemedInput
             style={s.input}
             value={name}
             onChangeText={setName}
@@ -1333,9 +1791,13 @@ function MobileForm({
       {form.kind !== "edit" && (
         <>
           <Text style={s.label}>
-            {form.kind === "add" ? "Starting quantity" : "How many units?"}
+            {form.kind === "add"
+              ? addition.item
+                ? "Quantity to add"
+                : "Starting quantity"
+              : "How many units?"}
           </Text>
-          <TextInput
+          <ThemedInput
             style={s.input}
             keyboardType="number-pad"
             value={quantity}
@@ -1343,10 +1805,10 @@ function MobileForm({
           />
         </>
       )}
-      {form.kind !== "adjust" && (
+      {form.kind !== "adjust" && !(form.kind === "add" && addition.item) && (
         <>
           <Text style={s.label}>Alert below</Text>
-          <TextInput
+          <ThemedInput
             style={s.input}
             keyboardType="number-pad"
             value={threshold}
@@ -1354,33 +1816,51 @@ function MobileForm({
           />
         </>
       )}
+      {form.kind === "adjust" && (
+        <Text style={s.subtitle}>
+          After this update: {form.item.quantity + Number(quantity) * direction}{" "}
+          in stock
+        </Text>
+      )}
       <Pressable
         disabled={busy}
         style={s.primary}
         onPress={async () => {
           setBusy(true);
           try {
-            if (!quantity.trim() || !threshold.trim())
+            if (!quantity.trim() || (!addition.item && !threshold.trim()))
               throw new Error("Enter a whole quantity and threshold.");
             if (form.kind === "add") {
-              const c = selected ?? {
+              validateQuantity(Number(quantity));
+              if (addition.item && Number(quantity) === 0)
+                throw new Error("Enter at least one unit to add.");
+              const c = addition.catalog ?? {
                 id: Crypto.randomUUID(),
                 name: name.trim(),
                 category_id: cat,
               };
               if (!c.name) throw new Error("Give your supply a name.");
-              if (data.items.some((i) => i.catalog_item_id === c.id))
-                throw new Error(
-                  "Already in your stock. Adjust it or restore it in Settings.",
-                );
-              await onSave({
-                kind: "add",
-                item_id: Crypto.randomUUID(),
-                catalog: c,
-                delta: Number(quantity),
-                threshold: Number(threshold),
-                ...(!selected && photo ? { photo } : {}),
-              });
+              if (addition.item) {
+                if (addition.item.archived_at)
+                  await onSave({
+                    kind: "archive",
+                    item_id: addition.item.id,
+                    archived: false,
+                  });
+                await onSave({
+                  kind: "adjust",
+                  item_id: addition.item.id,
+                  delta: Number(quantity),
+                });
+              } else
+                await onSave({
+                  kind: "add",
+                  item_id: Crypto.randomUUID(),
+                  catalog: c,
+                  delta: Number(quantity),
+                  threshold: Number(threshold),
+                  ...(!addition.catalog && photo ? { photo } : {}),
+                });
             } else if (form.kind === "adjust")
               await onSave({
                 kind: "adjust",
@@ -1407,7 +1887,9 @@ function MobileForm({
           {busy
             ? "Saving…"
             : form.kind === "add"
-              ? "Add to my inventory"
+              ? addition.item
+                ? "Add to existing stock"
+                : "Add to my inventory"
               : "Save update"}
         </Text>
       </Pressable>
@@ -1461,7 +1943,7 @@ function MobileCategoryEditor({
           </Pressable>
         ))}
       </ScrollView>
-      <TextInput
+      <ThemedInput
         style={s.input}
         accessibilityLabel="Category name"
         placeholder="Category name"
@@ -1578,7 +2060,7 @@ function MobileLogin({
         inbox for the sign-in code.
       </Text>
       {stage === "email" ? (
-        <TextInput
+        <ThemedInput
           style={s.input}
           autoCapitalize="none"
           keyboardType="email-address"
@@ -1588,7 +2070,7 @@ function MobileLogin({
           onChangeText={setEmail}
         />
       ) : stage === "otp" ? (
-        <TextInput
+        <ThemedInput
           style={s.input}
           keyboardType="number-pad"
           autoComplete="one-time-code"
@@ -1597,7 +2079,7 @@ function MobileLogin({
           onChangeText={setCode}
         />
       ) : (
-        <TextInput
+        <ThemedInput
           style={s.input}
           placeholder="Your display name"
           value={name}
@@ -1731,7 +2213,7 @@ function styles(p: typeof palette) {
       height: 35,
       width: 35,
       borderRadius: 11,
-      backgroundColor: p.primary,
+      backgroundColor: p.button,
       justifyContent: "center",
       alignItems: "center",
       transform: [{ rotate: "-6deg" }],
@@ -1842,7 +2324,7 @@ function styles(p: typeof palette) {
       paddingVertical: 10,
       paddingHorizontal: 14,
       borderRadius: 11,
-      backgroundColor: p.primary,
+      backgroundColor: p.button,
     },
     primaryText: {
       fontFamily: "Quicksand_700Bold",
@@ -1977,7 +2459,7 @@ function styles(p: typeof palette) {
       color: p.muted,
     },
     primary: {
-      backgroundColor: p.primary,
+      backgroundColor: p.button,
       borderRadius: 13,
       padding: 16,
       marginTop: 10,

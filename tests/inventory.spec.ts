@@ -249,3 +249,44 @@ test("production app reloads and exports while fully offline", async ({
   await page.getByRole("button", { name: "Download PDF" }).click();
   expect((await download).suggestedFilename()).toBe("stocket-inventory.pdf");
 });
+
+test("Add item tops up existing stock by typed name and selected catalog match", async ({
+  page,
+}) => {
+  await page.goto("/");
+  const paper = page
+    .locator(".item-card")
+    .filter({ has: page.getByRole("heading", { name: "Printer paper A4" }) });
+  await expect(paper.locator(".stock-row strong")).toContainText("24");
+  await page.getByRole("button", { name: "Add item", exact: true }).click();
+  await page.getByLabel("Item name", { exact: true }).fill("printer paper a4");
+  await expect(page.getByText("Already in your stock:")).toBeVisible();
+  await expect(page.getByLabel("Alert below")).toHaveCount(0);
+  await page.getByLabel("Quantity to add").fill("7");
+  await page.getByRole("button", { name: "Add to existing stock" }).click();
+  await expect(page.locator(".item-card")).toHaveCount(8);
+  await expect(paper.locator(".stock-row strong")).toContainText("31");
+  await page.reload();
+  await expect(paper.locator(".stock-row strong")).toContainText("31");
+  await page.getByRole("button", { name: "Add item", exact: true }).click();
+  await page.getByLabel("Item name", { exact: true }).fill("Printer paper");
+  await page
+    .locator(".catalog-matches button")
+    .filter({ hasText: "Printer paper A4" })
+    .click();
+  await page.getByLabel("Quantity to add").fill("2");
+  await page.getByRole("button", { name: "Add to existing stock" }).click();
+  await expect(paper.locator(".stock-row strong")).toContainText("33");
+  await expect(page.locator(".item-card")).toHaveCount(8);
+  await paper
+    .getByRole("button", { name: "Options for Printer paper A4" })
+    .click();
+  await paper.getByRole("button", { name: "Remove item" }).click();
+  await expect(paper).toHaveCount(0);
+  await page.getByRole("button", { name: "Add item", exact: true }).click();
+  await page.getByLabel("Item name", { exact: true }).fill("Printer paper A4");
+  await page.getByLabel("Quantity to add").fill("3");
+  await page.getByRole("button", { name: "Add to existing stock" }).click();
+  await expect(paper.locator(".stock-row strong")).toContainText("36");
+  await expect(page.locator(".item-card")).toHaveCount(8);
+});

@@ -44,6 +44,8 @@ import {
 import { toast } from "sonner";
 import {
   catalogMatches,
+  resolveStockAddition,
+  validateQuantity,
   csvExport,
   demoSnapshot,
   isLow,
@@ -1358,7 +1360,9 @@ export default function Dashboard() {
                         <p>
                           {event.created_by === data.profile.id
                             ? data.profile.name
-                            : "A teammate"}{" "}
+                            : (data.people?.find(
+                                (person) => person.id === event.created_by,
+                              )?.name ?? "A teammate")}{" "}
                           ·{" "}
                           {event.source === "synced_offline"
                             ? "Synced from offline"
@@ -1546,7 +1550,7 @@ export default function Dashboard() {
                   const next = await mutate(fields);
                   setModal(null);
                   toast.success(
-                    `Nice one, ${data.profile.name} — ${modal.kind === "add" ? "item added" : "stock updated"}.`,
+                    `Nice one, ${data.profile.name} — ${fields.kind === "add" ? "item added" : "stock updated"}.`,
                   );
                   if (next) {
                     const item = next.items.find(
@@ -1705,6 +1709,7 @@ function ItemForm({
       toast.error((e as Error).message);
     }
   }
+  const addition = resolveStockAddition(data, name, selected);
   return (
     <form
       onSubmit={async (e) => {
@@ -1712,24 +1717,36 @@ function ItemForm({
         setBusy(true);
         try {
           if (modal.kind === "add") {
-            const c = selected ?? {
+            validateQuantity(Number(quantity));
+            if (addition.item && Number(quantity) === 0)
+              throw new Error("Enter at least one unit to add.");
+            const c = addition.catalog ?? {
               id: uuid(),
               name: name.trim(),
               category_id: cat,
             };
             if (!c.name) throw new Error("Give your item a name.");
-            if (data.items.some((i) => i.catalog_item_id === c.id))
-              throw new Error(
-                "This item already has a stock record. Adjust or restore it instead.",
-              );
-            await onSave({
-              kind: "add",
-              item_id: uuid(),
-              catalog: c,
-              delta: Number(quantity),
-              threshold: Number(threshold),
-              ...(!selected && photo ? { photo } : {}),
-            });
+            if (addition.item) {
+              if (addition.item.archived_at)
+                await onSave({
+                  kind: "archive",
+                  item_id: addition.item.id,
+                  archived: false,
+                });
+              await onSave({
+                kind: "adjust",
+                item_id: addition.item.id,
+                delta: Number(quantity),
+              });
+            } else
+              await onSave({
+                kind: "add",
+                item_id: uuid(),
+                catalog: c,
+                delta: Number(quantity),
+                threshold: Number(threshold),
+                ...(!addition.catalog && photo ? { photo } : {}),
+              });
           } else if (modal.kind === "adjust") {
             await onSave({
               kind: "adjust",
@@ -1755,6 +1772,13 @@ function ItemForm({
     >
       {modal.kind === "add" ? (
         <>
+          {addition.item && (
+            <p className="form-intro">
+              Already in your stock: {addition.item.quantity} units. Adding
+              units keeps your current alert threshold
+              {addition.item.archived_at ? "; this item will be restored" : ""}.
+            </p>
+          )}
           <p className="form-intro">
             Search the shared catalog first. Someone may have done the little
             details for you already.
@@ -1792,7 +1816,7 @@ function ItemForm({
               ))}
             </div>
           )}
-          {selected && (
+          {addition.catalog && (
             <div className="catalog-selected">
               <Check size={18} />
               Linked to the shared catalog. Category is ready.
@@ -1801,8 +1825,8 @@ function ItemForm({
           <label>
             Category
             <select
-              disabled={!!selected}
-              value={cat}
+              disabled={!!addition.catalog}
+              value={addition.catalog?.category_id ?? cat}
               onChange={(e) => setCat(e.target.value)}
             >
               {data.categories.map((c) => (
@@ -1812,7 +1836,7 @@ function ItemForm({
               ))}
             </select>
           </label>
-          {!selected && (
+          {!addition.catalog && (
             <>
               <button
                 type="button"
@@ -1965,7 +1989,11 @@ function ItemForm({
       <div className="form-columns">
         {modal.kind !== "edit" && (
           <label>
-            {modal.kind === "add" ? "Starting quantity" : "How many units?"}
+            {modal.kind === "add"
+              ? addition.item
+                ? "Quantity to add"
+                : "Starting quantity"
+              : "How many units?"}
             <input
               required
               type="number"
@@ -1977,20 +2005,21 @@ function ItemForm({
             />
           </label>
         )}
-        {modal.kind !== "adjust" && (
-          <label>
-            Alert below
-            <input
-              required
-              type="number"
-              min={0}
-              max={1000000}
-              step={1}
-              value={threshold}
-              onChange={(e) => setThreshold(e.target.value)}
-            />
-          </label>
-        )}
+        {modal.kind !== "adjust" &&
+          !(modal.kind === "add" && addition.item) && (
+            <label>
+              Alert below
+              <input
+                required
+                type="number"
+                min={0}
+                max={1000000}
+                step={1}
+                value={threshold}
+                onChange={(e) => setThreshold(e.target.value)}
+              />
+            </label>
+          )}
       </div>
       {modal.kind === "adjust" && (
         <div className="quantity-preview">
@@ -2006,7 +2035,11 @@ function ItemForm({
         ) : (
           <Check size={18} />
         )}{" "}
-        {modal.kind === "add" ? "Add to my inventory" : "Save update"}
+        {modal.kind === "add"
+          ? addition.item
+            ? "Add to existing stock"
+            : "Add to my inventory"
+          : "Save update"}
       </button>
       <p className="form-footnote">
         <ShieldCheck size={14} />

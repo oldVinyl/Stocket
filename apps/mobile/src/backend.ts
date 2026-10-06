@@ -66,6 +66,11 @@ export const remote: Remote = {
         .limit(200),
     ]);
     for (const r of results) if (r.error) throw r.error;
+    const { data: people, error: peopleError } = await supabase
+      .from("profiles")
+      .select("id,name")
+      .eq("company_id", profile.company_id);
+    if (peopleError) throw peopleError;
     const catalog = results[2].data as Record<string, any>[];
     const paths = catalog
       .filter((c) => c.image_url)
@@ -104,6 +109,7 @@ export const remote: Remote = {
     }
     return {
       profile,
+      people: people ?? [],
       company: results[0].data,
       categories: results[1].data ?? [],
       catalog: results[2].data ?? [],

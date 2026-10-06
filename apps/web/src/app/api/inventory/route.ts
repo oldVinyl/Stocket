@@ -42,8 +42,14 @@ export async function GET() {
         .limit(200),
     ]);
     for (const r of results) if (r.error) throw r.error;
+    const { data: people, error: peopleError } = await client
+      .from("profiles")
+      .select("id,name")
+      .eq("company_id", profile.company_id);
+    if (peopleError) throw peopleError;
     return Response.json({
       profile,
+      people: people ?? [],
       company: results[0].data,
       categories: results[1].data,
       catalog: results[2].data,
