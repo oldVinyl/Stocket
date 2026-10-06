@@ -58,13 +58,17 @@ import { createStore, request } from "@/lib/local";
 import PasskeyButton from "./passkey-button";
 import SupplyPhoto from "./supply-photo";
 import CategoryManager from "./category-manager";
-import { jsPDF } from "jspdf";
+import { inventoryPdf } from "@/lib/pdf";
+import CompanionGuide from "./companion-guide";
+import GettingStarted from "./getting-started";
+import Overview from "./overview";
 type Tab = "Overview" | "Inventory" | "Categories" | "Activity" | "Settings";
 type Modal =
   | { kind: "add" }
   | { kind: "adjust" | "edit"; item: Item }
   | { kind: "login" }
   | { kind: "help" }
+  | { kind: "companion" }
   | null;
 const icons = [FileText, Box, Pencil, Folder];
 function SupplyArt({
@@ -304,8 +308,15 @@ export default function Dashboard() {
   }, [connected, sync]);
   useEffect(() => {
     const close = () => setMenu(null);
+    const keydown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setMenu(null);
+    };
     window.addEventListener("click", close);
-    return () => window.removeEventListener("click", close);
+    window.addEventListener("keydown", keydown);
+    return () => {
+      window.removeEventListener("click", close);
+      window.removeEventListener("keydown", keydown);
+    };
   }, []);
   async function mutate(
     fields:
@@ -356,36 +367,177 @@ export default function Dashboard() {
         a.click();
         URL.revokeObjectURL(url);
       } else {
-        const pdf = new jsPDF();
-        pdf.setTextColor("#102B53");
-        pdf.setFontSize(22);
-        pdf.text("Stocket · Inventory", 18, 22);
-        pdf.setFontSize(12);
-        pdf.text(
-          `${data.company.name} · ${new Date().toLocaleDateString()}`,
-          18,
-          32,
-        );
-        let y = 48;
-        for (const i of data.items.filter((i) => !i.archived_at)) {
-          const c = data.catalog.find((c) => c.id === i.catalog_item_id);
-          const lines = pdf.splitTextToSize(
-            `${c?.name ?? "Item"} — ${i.quantity} in stock / alert below ${i.low_stock_threshold}`,
-            170,
-          );
-          if (y + lines.length * 7 > 275) {
-            pdf.addPage();
-            y = 22;
-          }
-          pdf.text(lines, 18, y);
-          y += lines.length * 7 + 6;
-        }
-        pdf.save("stocket-inventory.pdf");
+        inventoryPdf(data).save("stocket-inventory.pdf");
       }
       toast.success("Your inventory export is ready.");
     } catch (e) {
       toast.error((e as Error).message);
     }
+  }
+  function showInventory(onlyLow = false) {
+    setTab("Inventory");
+    setQuery("");
+    setCategory("all");
+    setStatus(onlyLow ? "low" : "all");
+    setMenu(null);
+  }
+  async function signOut() {
+    if (data?.queue.length) {
+      toast.warning("Sync your pending changes before signing out.");
+      return;
+    }
+    try {
+      await request("/api/auth", {
+        method: "POST",
+        body: JSON.stringify({ action: "logout" }),
+      });
+      await createStore("connected", identityRef.current).persistence.clear();
+      location.reload();
+    } catch (e) {
+      toast.error((e as Error).message);
+    }
+  }
+  function accountMenu() {
+    return (
+      <div
+        className="dropdown account-menu"
+        aria-label="Account menu"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <strong>{data?.profile.name ?? "Your account"}</strong>
+        <small>
+          {connected ? data?.profile.email : "You’re exploring the local demo"}
+        </small>
+        <button
+          onClick={() => {
+            setTab("Settings");
+            setMenu(null);
+          }}
+        >
+          <Settings size={17} /> Account & workspace
+        </button>
+        <button onClick={toggleTheme}>
+          {dark ? <Sun size={17} /> : <Moon size={17} />} Use{" "}
+          {dark ? "light" : "dark"} mode
+        </button>
+        <button
+          onClick={() => {
+            setMenu(null);
+            setModal({ kind: "help" });
+          }}
+        >
+          <CircleHelp size={17} /> Help & getting started
+        </button>
+        <button
+          onClick={() => {
+            setMenu(null);
+            setModal({ kind: "companion" });
+          }}
+        >
+          <Smartphone size={17} /> Get Stocket on your phone
+        </button>
+        {connected ? (
+          <button onClick={() => void signOut()}>
+            <LogOut size={17} /> Sign out
+          </button>
+        ) : (
+          <button
+            onClick={() => {
+              setModal({ kind: "login" });
+              setMenu(null);
+            }}
+          >
+            <Users size={17} /> Connect your company
+          </button>
+        )}
+      </div>
+    );
+  }
+  async function startTour() {
+    setModal(null);
+    showInventory();
+    const { driver } = await import("driver.js");
+    requestAnimationFrame(() => {
+      const tour = driver({
+        showProgress: true,
+        progressText: "{{current}} of {{total}}",
+        popoverClass: "stocket-tour",
+        animate: !matchMedia("(prefers-reduced-motion: reduce)").matches,
+        stageRadius: 14,
+        overlayColor: "#081F5C",
+        nextBtnText: "Next",
+        prevBtnText: "Back",
+        doneBtnText: "Ready to go",
+        disableActiveInteraction: true,
+        steps: [
+          {
+            element: ".sidebar nav",
+            popover: {
+              title: "Your workspace",
+              description:
+                "Overview is your daily check-in. Inventory holds your supplies; Categories and Activity help you find things and follow stock changes.",
+            },
+          },
+          {
+            element: '[data-tour="add"]',
+            popover: {
+              title: "Add a supply",
+              description:
+                "Search the shared catalog first, then enter your own quantity and low-stock threshold. Only new catalog entries need a photo and category.",
+            },
+          },
+          {
+            element: ".toolbar",
+            popover: {
+              title: "Find the right thing",
+              description:
+                "Search, filter by category or stock level, and choose grid or list view.",
+            },
+          },
+          {
+            element: ".adjust-button",
+            popover: {
+              title: "Stock in, stock out",
+              description:
+                "Choose Adjust stock, select a direction, and enter the number of units. Use an item’s three-dot menu to edit its threshold or remove it.",
+            },
+          },
+          {
+            element: ".notification",
+            popover: {
+              title: "A friendly heads-up",
+              description:
+                "The bell opens your low-stock reminders. Select a reminder to jump to the supplies that need a top-up.",
+            },
+          },
+          {
+            element: ".export-wrap",
+            popover: {
+              title: "Keep a copy",
+              description:
+                "Download a CSV or a formatted PDF table of all active supplies. Exports are made on your device.",
+            },
+          },
+          {
+            element: ".sync-label",
+            popover: {
+              title: "Offline is okay",
+              description:
+                "Changes save here first. A connected company syncs when the network returns. Demo changes stay on this device.",
+            },
+          },
+          {
+            element: ".top-avatar",
+            popover: {
+              title: "Your account",
+              description:
+                "Open your account menu for workspace details, appearance, and sign-in. Revisit Help & getting started whenever you need a hand.",
+            },
+          },
+        ],
+      });
+      tour.drive();
+    });
   }
   function toggleTheme() {
     const next = !dark;
@@ -475,7 +627,7 @@ export default function Dashboard() {
               <br />
               wherever work takes you.
             </p>
-            <button onClick={() => setModal({ kind: "help" })}>
+            <button onClick={() => setModal({ kind: "companion" })}>
               Meet your pocket companion <ArrowRight size={16} />
             </button>
           </div>
@@ -504,17 +656,23 @@ export default function Dashboard() {
             <button
               className="icon-btn"
               aria-label="Account settings"
-              onClick={() => setTab("Settings")}
+              aria-expanded={menu === "account"}
+              onClick={(e) => {
+                e.stopPropagation();
+                setMenu(menu === "account" ? null : "account");
+              }}
             >
               <MoreHorizontal size={20} />
             </button>
+            {menu === "account" && accountMenu()}
           </div>
         </div>
       </aside>
       <div className="main-shell">
         <header className="topbar">
           <div className="breadcrumb">
-            Workspace <ChevronRight size={14} />
+            <span className="breadcrumb-workspace">Workspace</span>{" "}
+            <ChevronRight size={14} />
             <strong>{tab}</strong>
           </div>
           <div className="top-actions">
@@ -555,20 +713,82 @@ export default function Dashboard() {
             >
               {dark ? <Sun size={20} /> : <Moon size={20} />}
             </button>
-            <button
-              className="notification icon-btn"
-              aria-label={`${low.length} low stock alerts`}
-              onClick={() => {
-                setTab("Inventory");
-                setStatus("low");
-              }}
-            >
-              <Bell size={21} />
-              {low.length > 0 && <i />}
-            </button>
-            <span className="avatar top-avatar">
-              {data?.profile.name.slice(0, 1) ?? "?"}
-            </span>
+            <div className="notification-wrap">
+              <button
+                className="notification icon-btn"
+                aria-label={`${low.length} low stock alerts`}
+                aria-expanded={menu === "notifications"}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setMenu(menu === "notifications" ? null : "notifications");
+                }}
+              >
+                <Bell size={21} />
+                {low.length > 0 && <i />}
+              </button>
+              {menu === "notifications" && (
+                <section
+                  className="notification-panel"
+                  aria-label="Stock reminders"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <div className="overview-title">
+                    <h2>Stock reminders</h2>
+                    <span className="reminder-count">{low.length}</span>
+                  </div>
+                  <p>
+                    {low.length
+                      ? `${low.length} ${low.length === 1 ? "supply needs" : "supplies need"} a top-up.`
+                      : "All stocked up. No low-stock reminders right now."}
+                  </p>
+                  {low.slice(0, 3).map((item) => (
+                    <button
+                      className="reminder-item"
+                      key={item.id}
+                      onClick={() => showInventory(true)}
+                    >
+                      <TriangleAlert size={18} />
+                      <span>
+                        <strong>
+                          {
+                            data?.catalog.find(
+                              (c) => c.id === item.catalog_item_id,
+                            )?.name
+                          }
+                        </strong>
+                        <small>
+                          {item.quantity} left · threshold{" "}
+                          {item.low_stock_threshold}
+                        </small>
+                      </span>
+                      <ArrowRight size={16} />
+                    </button>
+                  ))}
+                  {low.length > 0 && (
+                    <button
+                      className="button primary"
+                      onClick={() => showInventory(true)}
+                    >
+                      View low-stock inventory <ArrowRight size={16} />
+                    </button>
+                  )}
+                </section>
+              )}
+            </div>
+            <div className="top-account">
+              <button
+                className="avatar top-avatar"
+                aria-label="Open account menu"
+                aria-expanded={menu === "top-account"}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setMenu(menu === "top-account" ? null : "top-account");
+                }}
+              >
+                {data?.profile.name.slice(0, 1) ?? "?"}
+              </button>
+              {menu === "top-account" && accountMenu()}
+            </div>
           </div>
         </header>
         <main>
@@ -639,6 +859,7 @@ export default function Dashboard() {
                 <button
                   className="button primary"
                   onClick={() => setModal({ kind: "add" })}
+                  data-tour="add"
                   disabled={!data}
                 >
                   <Plus size={19} />
@@ -750,288 +971,303 @@ export default function Dashboard() {
                   </button>
                 </div>
               )}
-              <section className="inventory-section">
-                <div className="section-title">
-                  <h2>
-                    {status === "low" ? "Needs a little love" : "All supplies"}{" "}
-                    <span>{filtered.length}</span>
-                  </h2>
-                  <span className="section-note">
-                    Small supplies. Big difference.
-                  </span>
-                </div>
-                <div className="toolbar">
-                  <label className="search">
-                    <Search size={19} />
-                    <input
-                      placeholder="Find something in your stock…"
-                      value={query}
-                      onChange={(e) => setQuery(e.target.value)}
-                      aria-label="Search inventory"
-                    />
-                    {query && (
-                      <button
-                        className="icon-btn"
-                        aria-label="Clear search"
-                        onClick={() => setQuery("")}
-                      >
-                        <X size={16} />
-                      </button>
-                    )}
-                  </label>
-                  <select
-                    aria-label="Filter category"
-                    value={category}
-                    onChange={(e) => setCategory(e.target.value)}
-                  >
-                    <option value="all">All categories</option>
-                    {data.categories.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.name}
-                      </option>
-                    ))}
-                  </select>
-                  <select
-                    aria-label="Filter stock status"
-                    value={status}
-                    onChange={(e) => setStatus(e.target.value)}
-                  >
-                    <option value="all">All stock levels</option>
-                    <option value="low">Low stock</option>
-                    <option value="healthy">In stock</option>
-                  </select>
-                  <div className="view-toggle">
-                    <button
-                      className={view === "grid" ? "selected" : ""}
-                      aria-label="Grid view"
-                      onClick={() => setView("grid")}
-                    >
-                      <Grid2X2 size={18} />
-                    </button>
-                    <button
-                      className={view === "list" ? "selected" : ""}
-                      aria-label="List view"
-                      onClick={() => setView("list")}
-                    >
-                      <List size={20} />
-                    </button>
-                  </div>
-                </div>
-                <div className="results-line">
-                  <span>
-                    {query
-                      ? `Results for “${query}”`
-                      : `Showing ${filtered.length} ${filtered.length === 1 ? "item" : "items"}`}
-                  </span>
-                  <label>
-                    Sort by:{" "}
-                    <select
-                      value={sort}
-                      onChange={(e) => setSort(e.target.value)}
-                      aria-label="Sort inventory"
-                    >
-                      <option value="name">Name (A–Z)</option>
-                      <option value="quantity">Quantity</option>
-                    </select>
-                  </label>
-                </div>
-                {filtered.length === 0 ? (
-                  <div className="empty">
-                    <span className="empty-icon">
-                      <Package size={36} />
-                    </span>
+              {tab === "Overview" ? (
+                <Overview
+                  data={data}
+                  onInventory={showInventory}
+                  onActivity={() => setTab("Activity")}
+                  onAdjust={(item) => setModal({ kind: "adjust", item })}
+                />
+              ) : (
+                <section className="inventory-section">
+                  <div className="section-title">
                     <h2>
-                      {active.length
-                        ? "Nothing in this pocket."
-                        : "Let’s stock your first item."}
+                      {status === "low"
+                        ? "Needs a little love"
+                        : "All supplies"}{" "}
+                      <span>{filtered.length}</span>
                     </h2>
-                    <p>
-                      {active.length
-                        ? "Try a different search or clear your filters."
-                        : `A fresh start, ${data.profile.name}. Add a supply to get going.`}
-                    </p>
-                    <button
-                      className="button secondary"
-                      onClick={() => {
-                        if (active.length) {
-                          setQuery("");
-                          setCategory("all");
-                          setStatus("all");
-                        } else setModal({ kind: "add" });
-                      }}
-                    >
-                      {active.length ? "Clear filters" : "Add your first item"}
-                    </button>
+                    <span className="section-note">
+                      Small supplies. Big difference.
+                    </span>
                   </div>
-                ) : (
-                  <div
-                    className={`item-grid ${view === "list" ? "list-view" : ""}`}
-                  >
-                    {filtered.map((item) => {
-                      const c = data.catalog.find(
-                        (c) => c.id === item.catalog_item_id,
-                      )!;
-                      const cat = data.categories.find(
-                        (cat) => cat.id === c.category_id,
-                      );
-                      const catIndex = data.categories.findIndex(
-                        (cat) => cat.id === c.category_id,
-                      );
-                      const pending = data.queue.some(
-                        (q) => q.item_id === item.id,
-                      );
-                      return (
-                        <article className="item-card" key={item.id}>
-                          <div className="card-art">
-                            <SupplyPhoto
-                              path={c.image_url}
-                              fallback={
-                                <SupplyArt
-                                  name={c.name}
-                                  category={catIndex < 0 ? 2 : catIndex}
-                                />
-                              }
-                            />
-                            <span
-                              className={`stock-badge ${isLow(item) ? "warning" : ""}`}
-                            >
-                              {isLow(item) ? (
-                                <>
-                                  <span />
-                                  Low stock
-                                </>
-                              ) : (
-                                <>
-                                  <span />
-                                  In stock
-                                </>
-                              )}
-                            </span>
-                            <div className="card-menu">
-                              <button
-                                className="icon-btn"
-                                aria-label={`Options for ${c.name}`}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setMenu(menu === item.id ? null : item.id);
-                                }}
+                  <div className="toolbar">
+                    <label className="search">
+                      <Search size={19} />
+                      <input
+                        placeholder="Find something in your stock…"
+                        value={query}
+                        onChange={(e) => setQuery(e.target.value)}
+                        aria-label="Search inventory"
+                      />
+                      {query && (
+                        <button
+                          className="icon-btn"
+                          aria-label="Clear search"
+                          onClick={() => setQuery("")}
+                        >
+                          <X size={16} />
+                        </button>
+                      )}
+                    </label>
+                    <select
+                      aria-label="Filter category"
+                      value={category}
+                      onChange={(e) => setCategory(e.target.value)}
+                    >
+                      <option value="all">All categories</option>
+                      {data.categories.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.name}
+                        </option>
+                      ))}
+                    </select>
+                    <select
+                      aria-label="Filter stock status"
+                      value={status}
+                      onChange={(e) => setStatus(e.target.value)}
+                    >
+                      <option value="all">All stock levels</option>
+                      <option value="low">Low stock</option>
+                      <option value="healthy">In stock</option>
+                    </select>
+                    <div className="view-toggle">
+                      <button
+                        className={view === "grid" ? "selected" : ""}
+                        aria-label="Grid view"
+                        onClick={() => setView("grid")}
+                      >
+                        <Grid2X2 size={18} />
+                      </button>
+                      <button
+                        className={view === "list" ? "selected" : ""}
+                        aria-label="List view"
+                        onClick={() => setView("list")}
+                      >
+                        <List size={20} />
+                      </button>
+                    </div>
+                  </div>
+                  <div className="results-line">
+                    <span>
+                      {query
+                        ? `Results for “${query}”`
+                        : `Showing ${filtered.length} ${filtered.length === 1 ? "item" : "items"}`}
+                    </span>
+                    <label>
+                      Sort by:{" "}
+                      <select
+                        value={sort}
+                        onChange={(e) => setSort(e.target.value)}
+                        aria-label="Sort inventory"
+                      >
+                        <option value="name">Name (A–Z)</option>
+                        <option value="quantity">Quantity</option>
+                      </select>
+                    </label>
+                  </div>
+                  {filtered.length === 0 ? (
+                    <div className="empty">
+                      <span className="empty-icon">
+                        <Package size={36} />
+                      </span>
+                      <h2>
+                        {active.length
+                          ? "Nothing in this pocket."
+                          : "Let’s stock your first item."}
+                      </h2>
+                      <p>
+                        {active.length
+                          ? "Try a different search or clear your filters."
+                          : `A fresh start, ${data.profile.name}. Add a supply to get going.`}
+                      </p>
+                      <button
+                        className="button secondary"
+                        onClick={() => {
+                          if (active.length) {
+                            setQuery("");
+                            setCategory("all");
+                            setStatus("all");
+                          } else setModal({ kind: "add" });
+                        }}
+                      >
+                        {active.length
+                          ? "Clear filters"
+                          : "Add your first item"}
+                      </button>
+                    </div>
+                  ) : (
+                    <div
+                      className={`item-grid ${view === "list" ? "list-view" : ""}`}
+                    >
+                      {filtered.map((item) => {
+                        const c = data.catalog.find(
+                          (c) => c.id === item.catalog_item_id,
+                        )!;
+                        const cat = data.categories.find(
+                          (cat) => cat.id === c.category_id,
+                        );
+                        const catIndex = data.categories.findIndex(
+                          (cat) => cat.id === c.category_id,
+                        );
+                        const pending = data.queue.some(
+                          (q) => q.item_id === item.id,
+                        );
+                        return (
+                          <article className="item-card" key={item.id}>
+                            <div className="card-art">
+                              <SupplyPhoto
+                                path={c.image_url}
+                                fallback={
+                                  <SupplyArt
+                                    name={c.name}
+                                    category={catIndex < 0 ? 2 : catIndex}
+                                  />
+                                }
+                              />
+                              <span
+                                className={`stock-badge ${isLow(item) ? "warning" : ""}`}
                               >
-                                <MoreHorizontal size={21} />
-                              </button>
-                              {menu === item.id && (
-                                <div
-                                  className="dropdown"
-                                  onClick={(e) => e.stopPropagation()}
+                                {isLow(item) ? (
+                                  <>
+                                    <span />
+                                    Low stock
+                                  </>
+                                ) : (
+                                  <>
+                                    <span />
+                                    In stock
+                                  </>
+                                )}
+                              </span>
+                              <div className="card-menu">
+                                <button
+                                  className="icon-btn"
+                                  aria-label={`Options for ${c.name}`}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setMenu(menu === item.id ? null : item.id);
+                                  }}
                                 >
-                                  <button
-                                    onClick={() => {
-                                      setModal({ kind: "edit", item });
-                                      setMenu(null);
-                                    }}
+                                  <MoreHorizontal size={21} />
+                                </button>
+                                {menu === item.id && (
+                                  <div
+                                    className="dropdown"
+                                    onClick={(e) => e.stopPropagation()}
                                   >
-                                    <Pencil size={16} />
-                                    Edit threshold
-                                  </button>
-                                  {connected && (
                                     <button
                                       onClick={() => {
-                                        const reason = prompt(
-                                          "What should we fix about this catalog item?",
-                                        );
-                                        if (reason)
-                                          void request("/api/catalog", {
-                                            method: "POST",
-                                            body: JSON.stringify({
-                                              action: "report",
-                                              catalog_id: c.id,
-                                              reason,
-                                            }),
-                                          })
-                                            .then(() =>
-                                              toast.success(
-                                                "Thanks for helping keep the catalog useful.",
-                                              ),
-                                            )
-                                            .catch((e) =>
-                                              toast.error(e.message),
-                                            );
+                                        setModal({ kind: "edit", item });
                                         setMenu(null);
                                       }}
                                     >
-                                      <TriangleAlert size={16} />
-                                      Report catalog item
+                                      <Pencil size={16} />
+                                      Edit threshold
                                     </button>
-                                  )}
-                                  <button
-                                    className="danger"
-                                    onClick={() => {
-                                      void remove(item);
-                                      setMenu(null);
-                                    }}
-                                  >
-                                    <Trash2 size={16} />
-                                    Remove item
-                                  </button>
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                          <div className="card-content">
-                            <span className="category-label">
-                              {cat?.name ?? "Supplies"}
-                            </span>
-                            <h3>{c.name}</h3>
-                            <div className="stock-row">
-                              <strong
-                                className={isLow(item) ? "warning-text" : ""}
-                              >
-                                {item.quantity}
-                                <span>in stock</span>
-                              </strong>
-                              <small>Min. {item.low_stock_threshold}</small>
-                            </div>
-                            <div
-                              className={`stock-meter ${isLow(item) ? "low" : ""}`}
-                            >
-                              <span
-                                style={{
-                                  width: `${Math.min(100, Math.max(4, (item.quantity / Math.max(item.low_stock_threshold * 4, 1)) * 100))}%`,
-                                }}
-                              />
-                            </div>
-                            <button
-                              className="adjust-button"
-                              onClick={() => setModal({ kind: "adjust", item })}
-                            >
-                              <span>
-                                {pending ? (
-                                  <CloudOff size={16} />
-                                ) : (
-                                  <Plus size={16} />
+                                    {connected && (
+                                      <button
+                                        onClick={() => {
+                                          const reason = prompt(
+                                            "What should we fix about this catalog item?",
+                                          );
+                                          if (reason)
+                                            void request("/api/catalog", {
+                                              method: "POST",
+                                              body: JSON.stringify({
+                                                action: "report",
+                                                catalog_id: c.id,
+                                                reason,
+                                              }),
+                                            })
+                                              .then(() =>
+                                                toast.success(
+                                                  "Thanks for helping keep the catalog useful.",
+                                                ),
+                                              )
+                                              .catch((e) =>
+                                                toast.error(e.message),
+                                              );
+                                          setMenu(null);
+                                        }}
+                                      >
+                                        <TriangleAlert size={16} />
+                                        Report catalog item
+                                      </button>
+                                    )}
+                                    <button
+                                      className="danger"
+                                      onClick={() => {
+                                        void remove(item);
+                                        setMenu(null);
+                                      }}
+                                    >
+                                      <Trash2 size={16} />
+                                      Remove item
+                                    </button>
+                                  </div>
                                 )}
-                                Adjust stock
+                              </div>
+                            </div>
+                            <div className="card-content">
+                              <span className="category-label">
+                                {cat?.name ?? "Supplies"}
                               </span>
-                              <ArrowRight size={16} />
-                            </button>
-                          </div>
-                        </article>
-                      );
-                    })}
+                              <h3>{c.name}</h3>
+                              <div className="stock-row">
+                                <strong
+                                  className={isLow(item) ? "warning-text" : ""}
+                                >
+                                  {item.quantity}
+                                  <span>in stock</span>
+                                </strong>
+                                <small>Min. {item.low_stock_threshold}</small>
+                              </div>
+                              <div
+                                className={`stock-meter ${isLow(item) ? "low" : ""}`}
+                              >
+                                <span
+                                  style={{
+                                    width: `${Math.min(100, Math.max(4, (item.quantity / Math.max(item.low_stock_threshold * 4, 1)) * 100))}%`,
+                                  }}
+                                />
+                              </div>
+                              <button
+                                className="adjust-button"
+                                onClick={() =>
+                                  setModal({ kind: "adjust", item })
+                                }
+                              >
+                                <span>
+                                  {pending ? (
+                                    <CloudOff size={16} />
+                                  ) : (
+                                    <Plus size={16} />
+                                  )}
+                                  Adjust stock
+                                </span>
+                                <ArrowRight size={16} />
+                              </button>
+                            </div>
+                          </article>
+                        );
+                      })}
+                    </div>
+                  )}
+                  <div className="inventory-footer">
+                    <span>
+                      <ShieldCheck size={15} />
+                      {connected
+                        ? "Only your company can see these stock levels."
+                        : "Demo stock is private to this browser."}
+                    </span>
+                    <span>
+                      Made for the everyday essentials{" "}
+                      <span className="footer-spark">✦</span>
+                    </span>
                   </div>
-                )}
-                <div className="inventory-footer">
-                  <span>
-                    <ShieldCheck size={15} />
-                    {connected
-                      ? "Only your company can see these stock levels."
-                      : "Demo stock is private to this browser."}
-                  </span>
-                  <span>
-                    Made for the everyday essentials{" "}
-                    <span className="footer-spark">✦</span>
-                  </span>
-                </div>
-              </section>
+                </section>
+              )}
             </>
           )}
           {data && tab === "Categories" && (
@@ -1180,27 +1416,7 @@ export default function Dashboard() {
                 {connected ? (
                   <button
                     className="button secondary"
-                    onClick={async () => {
-                      if (data.queue.length) {
-                        toast.warning(
-                          "Sync your pending changes before signing out.",
-                        );
-                        return;
-                      }
-                      try {
-                        await request("/api/auth", {
-                          method: "POST",
-                          body: JSON.stringify({ action: "logout" }),
-                        });
-                        await createStore(
-                          "connected",
-                          identityRef.current,
-                        ).persistence.clear();
-                        location.reload();
-                      } catch (e) {
-                        toast.error((e as Error).message);
-                      }
-                    }}
+                    onClick={() => void signOut()}
                   >
                     <LogOut size={17} />
                     Sign out
@@ -1288,8 +1504,10 @@ export default function Dashboard() {
                 : modal.kind === "edit"
                   ? "Set a friendly reminder"
                   : modal.kind === "help"
-                    ? "Stocket goes where you go"
-                    : "Welcome to Stocket"
+                    ? "Help & getting started"
+                    : modal.kind === "companion"
+                      ? "Your stock. Your pocket."
+                      : "Welcome to Stocket"
           }
           onClose={() => setModal(null)}
         >
@@ -1301,23 +1519,12 @@ export default function Dashboard() {
               }}
             />
           ) : modal.kind === "help" ? (
-            <div className="help-content">
-              <span className="empty-icon">
-                <Smartphone size={42} />
-              </span>
-              <p>
-                Find supplies, adjust stock, and keep the everyday essentials
-                moving. Sign in with your company email on the mobile companion
-                to take the same inventory with you.
-              </p>
-              <p>
-                Offline? Keep working. Your changes save on your device and sync
-                when you reconnect. Low-stock items get a warm orange flag.
-              </p>
-              <button className="button primary" onClick={() => setModal(null)}>
-                Got it <Check size={18} />
-              </button>
-            </div>
+            <GettingStarted
+              onTour={() => void startTour()}
+              onCompanion={() => setModal({ kind: "companion" })}
+            />
+          ) : modal.kind === "companion" ? (
+            <CompanionGuide />
           ) : (
             data && (
               <ItemForm
@@ -1375,7 +1582,7 @@ function Dialog({
       if (e.key === "Tab" && root) {
         const els = Array.from(
           root.querySelectorAll<HTMLElement>(
-            'button:not(:disabled),input,select,textarea,[tabindex="0"]',
+            'a[href],button:not(:disabled),input,select,textarea,[tabindex="0"]',
           ),
         );
         const first = els[0],
@@ -1430,7 +1637,14 @@ function ItemForm({
   onSave,
   onCreateCategory,
 }: {
-  modal: Exclude<Modal, null | { kind: "login" } | { kind: "help" }>;
+  modal: Exclude<
+    Modal,
+    | null
+    | { kind: "login" }
+    | { kind: "help" }
+    | { kind: "companion" }
+    | { kind: "companion" }
+  >;
   data: Snapshot;
   onSave: (fields: Record<string, unknown>) => Promise<void>;
   onCreateCategory: (

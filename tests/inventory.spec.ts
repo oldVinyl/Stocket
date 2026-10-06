@@ -74,12 +74,105 @@ test("small screens keep stock controls visible without horizontal overflow", as
   await page.setViewportSize({ width: 1440, height: 1050 });
   await page.screenshot({ path: "artifacts/web-desktop.png", fullPage: true });
 });
+test("workspace menus, reminders, overview, companion, and guided help work", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1366, height: 768 });
+  await page.goto("/");
+  await expect(page.locator(".item-card")).toHaveCount(8);
+  await expect(page.locator(".pocket-card p")).toBeHidden();
+  await page
+    .locator(".sidebar nav")
+    .getByRole("button", { name: "Overview" })
+    .click();
+  await expect(
+    page.getByRole("region", { name: "Workspace overview" }),
+  ).toBeVisible();
+  await expect(page.locator(".item-card")).toHaveCount(0);
+  await page.getByRole("button", { name: "Open inventory" }).click();
+  await page.getByLabel("Search inventory").fill("paper");
+  await page.getByRole("button", { name: "3 low stock alerts" }).click();
+  await expect(
+    page.getByRole("region", { name: "Stock reminders" }),
+  ).toContainText("3 supplies need a top-up");
+  await page.getByRole("button", { name: "View low-stock inventory" }).click();
+  await expect(page.locator(".item-card")).toHaveCount(3);
+  await expect(page.getByLabel("Search inventory")).toHaveValue("");
+  await page
+    .getByRole("button", { name: "Account settings", exact: true })
+    .click();
+  await expect(page.getByLabel("Account menu", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Account & workspace" }).click();
+  await expect(
+    page.getByRole("heading", { name: "Make yourself at home" }),
+  ).toBeVisible();
+  await page
+    .getByRole("button", { name: "Meet your pocket companion" })
+    .click();
+  await expect(
+    page.getByRole("link", { name: "Get Stocket on GitHub" }),
+  ).toHaveAttribute("href", "https://github.com/oldVinyl");
+  await expect(page.getByRole("dialog")).toContainText("Add to Home Screen");
+  await page.keyboard.press("Escape");
+  await page
+    .getByRole("button", { name: "Help & getting started", exact: true })
+    .click();
+  await expect(page.locator(".guide-chapters li")).toHaveCount(7);
+  await page.getByRole("button", { name: "Show me around" }).click();
+  await expect(page.locator(".driver-popover-title")).toHaveText(
+    "Your workspace",
+  );
+  await page.getByRole("button", { name: "Next", exact: true }).click();
+  await expect(page.locator(".driver-popover-title")).toHaveText(
+    "Add a supply",
+  );
+  await page.keyboard.press("Escape");
+  await expect(page.locator(".driver-popover")).toHaveCount(0);
+  await page.setViewportSize({ width: 1920, height: 1080 });
+  await expect(page.locator(".pocket-card p")).toBeVisible();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page
+    .getByRole("button", { name: "Open account menu", exact: true })
+    .click();
+  await page
+    .getByRole("button", { name: "Help & getting started", exact: true })
+    .click();
+  await page.getByRole("button", { name: "Show me around" }).click();
+  const titles = [
+    "Your workspace",
+    "Add a supply",
+    "Find the right thing",
+    "Stock in, stock out",
+    "A friendly heads-up",
+    "Keep a copy",
+    "Offline is okay",
+    "Your account",
+  ];
+  for (const [index, title] of titles.entries()) {
+    await expect(page.locator(".driver-popover-title")).toHaveText(title);
+    await page
+      .getByRole("button", {
+        name: index === titles.length - 1 ? "Ready to go" : "Next",
+        exact: true,
+      })
+      .click();
+  }
+  await expect(page.locator(".driver-popover")).toHaveCount(0);
+  await page.getByRole("button", { name: "3 low stock alerts" }).click();
+  const reminderBounds = await page
+    .getByRole("region", { name: "Stock reminders" })
+    .boundingBox();
+  expect(reminderBounds!.x).toBeGreaterThanOrEqual(0);
+  expect(reminderBounds!.x + reminderBounds!.width).toBeLessThanOrEqual(390);
+});
+
 test("connected offline deductions retry safely when the response is lost", async ({
   page,
   context,
 }) => {
   let server = demoSnapshot(),
     lost = false;
+  server.company.name = "Acme Office";
   const applied = new Set<string>();
   await page.route("**/api/auth", (r) =>
     r.fulfill({
@@ -102,6 +195,8 @@ test("connected offline deductions retry safely when the response is lost", asyn
     } else await r.fulfill({ json: server });
   });
   await page.goto("/");
+  await expect(page.locator(".workspace")).toContainText("Acme Office");
+  await expect(page.locator(".workspace")).toContainText("Company workspace");
   await expect(page.locator(".item-card")).toHaveCount(8);
   await context.setOffline(true);
   await expect(page.locator(".sync-label")).toContainText("Offline");

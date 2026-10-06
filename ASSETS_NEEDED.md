@@ -17,3 +17,11 @@ The app uses customized Lucide icons and intentional letter tiles. No stock phot
 - **Format:** PNG
 - **Used for:** Expo production launcher icon; Expo default development icon is used until this asset is supplied and configured in app.json.
 - **Style notes:** Brand pocket mark centered on Milky Way, no transparency, generous safe margins.
+
+### Web app Home Screen icon
+- **Exact path:** /apps/web/public/pwa-icon.png
+- **Exact filename:** pwa-icon.png
+- **Dimensions:** 512x512
+- **Format:** PNG
+- **Used for:** PWA manifest and iPhone Home Screen icon; currently a generated rounded Planetary tile using the same pocket icon as the sidebar.
+- **Style notes:** Replace with the final builder-owned brand mark, centered with generous margins on Milky Way, no transparency.
