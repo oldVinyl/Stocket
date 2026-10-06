@@ -42,6 +42,7 @@ import {
   InventoryStore,
   catalogMatches,
   csvExport,
+  inventoryReportHtml,
   demoSnapshot,
   isLow,
   type CatalogItem,
@@ -264,27 +265,8 @@ function Pocket() {
         throw new Error("Sharing is unavailable on this device.");
       let uri: string;
       if (pdf) {
-        const escape = (v: string) =>
-          v.replace(
-            /[&<>"']/g,
-            (c) =>
-              ({
-                "&": "&amp;",
-                "<": "&lt;",
-                ">": "&gt;",
-                '"': "&quot;",
-                "'": "&#39;",
-              })[c]!,
-          );
-        const rows = data.items
-          .filter((i) => !i.archived_at)
-          .map(
-            (i) =>
-              `<tr><td>${escape(data.catalog.find((c) => c.id === i.catalog_item_id)?.name ?? "Item")}</td><td>${i.quantity}</td><td>${i.low_stock_threshold}</td></tr>`,
-          )
-          .join("");
         const file = await Print.printToFileAsync({
-          html: `<html><body style="font-family:sans-serif;padding:30px;color:#102B53"><h1>Stocket inventory</h1><p>${escape(data.company.name)}</p><table cellpadding="12"><tr><th>Item</th><th>In stock</th><th>Alert below</th></tr>${rows}</table></body></html>`,
+          html: inventoryReportHtml(data),
         });
         uri = file.uri;
       } else {
