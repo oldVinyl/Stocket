@@ -1,6 +1,6 @@
 import { jsPDF } from "jspdf";
 import { autoTable } from "jspdf-autotable";
-import { isLow, type Snapshot } from "@stocket/core";
+import { STOCKET_REPORT_LOGO, isLow, type Snapshot } from "@stocket/core";
 
 export function inventoryPdf(data: Snapshot) {
   const pdf = new jsPDF(),
@@ -13,15 +13,15 @@ export function inventoryPdf(data: Snapshot) {
     day: "numeric",
   });
   const header = () => {
-    pdf.setFillColor("#334EAC");
+    pdf.setFillColor("#FFF9F0");
     pdf.rect(0, 0, 210, 43, "F");
-    pdf.setTextColor("#FFF9F0");
+    pdf.setTextColor("#102B53");
     pdf.setFont("helvetica", "bold");
     pdf.setFontSize(24);
-    pdf.text("stocket.", 16, 19);
+    pdf.addImage(STOCKET_REPORT_LOGO, "PNG", 14, 7, 62, 18.72);
     pdf.setFontSize(11);
     pdf.setFont("helvetica", "normal");
-    pdf.text("A little order, everywhere.", 16, 29);
+    pdf.text("A little order, everywhere.", 16, 34);
     pdf.setFontSize(10);
     pdf.text("INVENTORY REPORT", 194, 18, { align: "right" });
     pdf.text(date, 194, 28, { align: "right" });

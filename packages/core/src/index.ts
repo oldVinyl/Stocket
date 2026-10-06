@@ -1,3 +1,5 @@
+import { STOCKET_REPORT_LOGO } from "./brand";
+export { STOCKET_REPORT_LOGO } from "./brand";
 export type Category = {
   id: string;
   name: string;
@@ -412,8 +414,8 @@ export function inventoryReportHtml(data: Snapshot) {
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><style>
     @page { size: A4; margin: 22mm 14mm; }
     * { box-sizing: border-box; } body { margin: 0; font-family: Arial, sans-serif; color: #102B53; font-size: 12px; }
-    header { background: #334EAC; color: #FFF9F0; padding: 24px; border-radius: 16px; }
-    header h1 { font-size: 30px; margin: 0 0 6px; } header p { margin: 0; }
+    header { background: #FFF9F0; color: #102B53; padding: 24px; border-radius: 16px; }
+    header img { width: 220px; height: auto; margin-bottom: 10px; } header p { margin: 0; }
     h2 { font-size: 22px; margin: 26px 0 8px; overflow-wrap: anywhere; }
     .date, footer { color: #69788D; } .summary { display: table; width: 100%; margin: 22px 0; table-layout: fixed; border-spacing: 6px 0; }
     .summary div { display: table-cell; background: #F0F6FB; padding: 16px; border-radius: 10px; color: #334EAC; }
@@ -424,7 +426,7 @@ export function inventoryReportHtml(data: Snapshot) {
     tbody tr:nth-child(even) { background: #F5F8FC; } .supply { font-weight: bold; } .number { text-align: right; }
     .status { color: #334EAC; font-weight: bold; } .status.low { color: #B95027; }
     footer { margin-top: 24px; padding-top: 14px; border-top: 1px solid #BAD6EB; font-size: 10px; }
-  </style></head><body><header><h1>stocket.</h1><p>A little order, everywhere.</p></header>
+  </style></head><body><header><img src="${STOCKET_REPORT_LOGO}" alt="Stocket"><p>A little order, everywhere.</p></header>
   <h2>${escape(data.company.name)}</h2><p class="date">Inventory report · ${escape(new Date().toLocaleDateString())}</p>
   <section class="summary"><div><strong>${active.length}</strong>Supplies</div><div><strong>${active.reduce((n, item) => n + item.quantity, 0)}</strong>Units in stock</div><div><strong>${active.filter(isLow).length}</strong>Need a top-up</div></section>
   <table><colgroup><col style="width:32%"><col style="width:23%"><col style="width:13%"><col style="width:15%"><col style="width:17%"></colgroup><thead><tr><th>Supply</th><th>Category</th><th class="number">In stock</th><th class="number">Threshold</th><th>Status</th></tr></thead><tbody>${rows || '<tr><td colspan="5">No active supplies yet. Add an item to start your stock report.</td></tr>'}</tbody></table>
