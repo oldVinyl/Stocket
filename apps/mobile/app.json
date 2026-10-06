@@ -1,0 +1,27 @@
+{
+  "expo": {
+    "name": "Stocket",
+    "slug": "stocket",
+    "scheme": "stocket",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.stocket.app",
+      "infoPlist": {
+        "NSCameraUsageDescription": "Photograph a new supply for the shared Stocket catalog."
+      }
+    },
+    "android": {
+      "package": "com.stocket.app"
+    },
+    "plugins": [
+      "expo-secure-store",
+      "expo-sqlite",
+      "expo-image-picker",
+      "expo-notifications",
+      "expo-font"
+    ]
+  }
+}
