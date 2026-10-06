@@ -1493,6 +1493,46 @@ h3 {
     max-width: 110px;
   }
 }
+/* Keep every sidebar control reachable when the viewport is shorter than its content. */
+@media (min-width: 721px) {
+  .sidebar {
+    overflow-y: auto;
+    overscroll-behavior-y: contain;
+  }
+  .sidebar > * {
+    flex-shrink: 0;
+  }
+}
+/* Only tighten vertical spacing on short screens with the full desktop sidebar. */
+@media (min-width: 981px) and (max-height: 800px) {
+  .sidebar {
+    padding-top: 22px;
+  }
+  .brand-tag {
+    margin: 10px 0 20px;
+  }
+  .workspace {
+    margin-bottom: 20px;
+  }
+  .sidebar .nav-link {
+    padding-top: 10px;
+    padding-bottom: 10px;
+    margin-bottom: 4px;
+  }
+  .sidebar-bottom {
+    padding-top: 20px;
+  }
+  .pocket-card {
+    padding-top: 14px;
+    padding-bottom: 14px;
+    margin-bottom: 16px;
+  }
+  .profile {
+    margin-top: 14px;
+    padding-top: 14px;
+    padding-bottom: 14px;
+  }
+}
 @media (max-width: 720px) {
   :root {
     --sidebar: 0px;
