@@ -14,7 +14,11 @@
       }
     },
     "android": {
-      "package": "com.stocket.app"
+      "package": "com.stocket.app",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#FFF9F0"
+      }
     },
     "plugins": [
       "expo-secure-store",
@@ -24,6 +28,7 @@
       "expo-font",
       "expo-sharing",
       "expo-status-bar"
-    ]
+    ],
+    "icon": "./assets/icon.png"
   }
 }

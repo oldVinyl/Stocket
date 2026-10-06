@@ -15,7 +15,13 @@ export const metadata: Metadata = {
     "Your office stock, in your pocket. A friendly inventory manager for teams.",
   manifest: "/manifest.webmanifest",
   appleWebApp: { capable: true, title: "Stocket", statusBarStyle: "default" },
-  icons: { apple: "/pwa-icon.png" },
+  icons: {
+    icon: [
+      { url: "/favicon.svg", type: "image/svg+xml" },
+      { url: "/favicon-32.png", sizes: "32x32", type: "image/png" },
+    ],
+    apple: "/pwa-icon.png",
+  },
 };
 export default function Layout({ children }: { children: React.ReactNode }) {
   return (

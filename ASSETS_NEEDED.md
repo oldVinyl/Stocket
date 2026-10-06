@@ -1,27 +1,22 @@
 # Stocket assets
 
-The app uses customized Lucide icons and intentional letter tiles. No stock photos, generated inventory photos, or broken image references are used.
+The chosen logo has been supplied from the actual interface: the customized Lucide wallet, Planetary tile, Quicksand Bold lettering, and Pink Lavender dot. No screenshot enlargement or invented logo is used.
 
-### Stocket brand mark
-- **Exact path:** /apps/web/public/assets/images/stocket-logo.svg (copy to /apps/mobile/assets/stocket-logo.svg for mobile)
-- **Exact filename:** stocket-logo.svg
-- **Dimensions:** 128x128
-- **Format:** SVG
-- **Used for:** Product brand mark in the sidebar and mobile header; currently rendered as a rounded Planetary tile with a pocket-shaped Lucide icon.
-- **Style notes:** A simple rounded pocket symbol, Planetary and Milky Way, readable at 28px. Builder-owned branding, no company logos.
+No manually supplied brand assets remain outstanding.
 
-### App launcher icon
-- **Exact path:** /apps/mobile/assets/icon.png
-- **Exact filename:** icon.png
-- **Dimensions:** 1024x1024
-- **Format:** PNG
-- **Used for:** Expo production launcher icon; Expo default development icon is used until this asset is supplied and configured in app.json.
-- **Style notes:** Brand pocket mark centered on Milky Way, no transparency, generous safe margins.
+| Asset                       | Exact path                                                           | Format / dimensions          | Used for                                  |
+| --------------------------- | -------------------------------------------------------------------- | ---------------------------- | ----------------------------------------- |
+| Portable wordmark           | `/assets/brand/stocket-logo.svg`                                     | SVG, outlined text, scalable | External branding, transparent background |
+| Large transparent wordmark  | `/assets/brand/stocket-logo.png`                                     | PNG, 2400px wide             | Documents and graphics                    |
+| Cream wordmark              | `/assets/brand/stocket-logo-cream.svg` and `.png`                    | SVG + PNG, 2400px wide       | Light-background graphics                 |
+| Dark-background wordmark    | `/assets/brand/stocket-logo-dark.svg` and `.png`                     | SVG + PNG, 2400px wide       | Sky lettering for dark backgrounds        |
+| Brand mark                  | `/assets/brand/stocket-mark.svg`                                     | SVG, 128×128 viewBox         | Icon without lettering                    |
+| Web mark                    | `/apps/web/public/assets/images/stocket-logo.svg`                    | SVG                          | Reusable web icon                         |
+| Web wordmark                | `/apps/web/public/assets/images/stocket-wordmark.svg`                | SVG                          | Reusable web logo                         |
+| Mobile mark                 | `/apps/mobile/assets/stocket-logo.svg`                               | SVG                          | Reusable native vector source             |
+| Mobile launcher             | `/apps/mobile/assets/icon.png`                                       | PNG, 1024×1024, opaque       | Expo launcher icon                        |
+| Android adaptive foreground | `/apps/mobile/assets/adaptive-icon.png`                              | PNG, 1024×1024, transparent  | Android mask-safe launcher foreground     |
+| Home Screen icon            | `/apps/web/public/pwa-icon.png`                                      | PNG, 512×512, opaque         | PWA / Apple Home Screen                   |
+| Browser icon                | `/apps/web/public/favicon.svg` and `/apps/web/public/favicon-32.png` | SVG + PNG, 32×32             | Browser tabs                              |
 
-### Web app Home Screen icon
-- **Exact path:** /apps/web/public/pwa-icon.png
-- **Exact filename:** pwa-icon.png
-- **Dimensions:** 512x512
-- **Format:** PNG
-- **Used for:** PWA manifest and iPhone Home Screen icon; currently a generated rounded Planetary tile using the same pocket icon as the sidebar.
-- **Style notes:** Replace with the final builder-owned brand mark, centered with generous margins on Milky Way, no transparency.
+The live sidebar/mobile headers continue to render their original vector logo and theme-aware text, preserving the layout the user chose. Wordmark SVG lettering is converted to paths so recipients do not need the Quicksand font installed. Quicksand's license is in `/assets/brand/Quicksand-OFL.txt`; the icon comes from the project's MIT-licensed Lucide package.
