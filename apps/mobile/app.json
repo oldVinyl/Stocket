@@ -21,7 +21,9 @@
       "expo-sqlite",
       "expo-image-picker",
       "expo-notifications",
-      "expo-font"
+      "expo-font",
+      "expo-sharing",
+      "expo-status-bar"
     ]
   }
 }

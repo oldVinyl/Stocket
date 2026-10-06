@@ -10,6 +10,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
       "@react-native-firebase/messaging",
       ["expo-build-properties", { ios: { useFrameworks: "static" } }],
     );
+  else plugins.push("expo-build-properties");
   return {
     ...config,
     name: "Stocket",

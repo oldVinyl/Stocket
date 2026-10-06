@@ -19,6 +19,8 @@ Open http://localhost:3000. For the mobile app:
 npm run mobile
 ```
 
+The mobile app uses Expo SDK 57 and requires the SDK 57 version of Expo Go. After upgrading dependencies, stop the running Metro server with Ctrl+C and restart it with `npm run start -w @stocket/mobile -- --clear`, then scan the new QR code.
+
 Expo Go can exercise the SQLite inventory, OTP flow, camera, and local exports. Passkeys and Firebase require a native development build. `npm run android -w @stocket/mobile` builds Android with its SDK installed; iOS builds require macOS/Xcode or EAS. No app-store deployment or EAS project has been created.
 
 ## What is implemented
