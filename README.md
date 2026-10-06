@@ -67,7 +67,7 @@ On iPhone or iPad, the hosted web app also works as a Home Screen companion: ope
 
 Companies can share useful supply details—names, categories, and photos. **Your quantities, thresholds, members, and stock activity stay within your company**, protected by database Row-Level Security.
 
-Invite teammates by email, let them verify their address, and get moving. Everyone in the company can manage stock. Stocket keeps things simple for everyday office supplies.
+Invite teammates by email right from Settings, let them verify their address, and get moving. Their invitation automatically belongs to your company. Everyone in the company can manage stock. Stocket keeps things simple for everyday office supplies.
 
 Offline updates use **quantity changes**, so two people recording supplies used don't silently overwrite each other's work. Changes are designed to be safe to retry, too.
 

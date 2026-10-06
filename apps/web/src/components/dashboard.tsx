@@ -1421,6 +1421,7 @@ export default function Dashboard() {
                 {connected && (
                   <div style={{ marginBottom: 16 }}>
                     <PasskeyButton register />
+                    <TeammateInvitation />
                   </div>
                 )}
                 {connected ? (
@@ -1630,6 +1631,65 @@ function CatalogReport({
       <button className="button primary" disabled={busy}>
         {busy ? "Sending…" : "Send report"}
       </button>
+    </form>
+  );
+}
+function TeammateInvitation() {
+  const [email, setEmail] = useState(""),
+    [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState("");
+  return (
+    <form
+      className="item-form"
+      onSubmit={async (event) => {
+        event.preventDefault();
+        setBusy(true);
+        setMessage("");
+        try {
+          const response = await fetch("/api/invitations", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ email }),
+          });
+          const result = await response.json();
+          if (!response.ok)
+            throw new Error(result.error ?? "Invitation could not be saved.");
+          setMessage(result.message);
+          if (result.warning) toast.warning(result.message);
+          else toast.success(result.message);
+          setEmail("");
+        } catch (error) {
+          const text = navigator.onLine
+            ? (error as Error).message
+            : "Connect to the internet to invite a teammate.";
+          setMessage(text);
+          toast.error(text);
+        } finally {
+          setBusy(false);
+        }
+      }}
+    >
+      <h2>Room for one more?</h2>
+      <p>
+        Invite a teammate to this company. They'll verify their email before
+        joining.
+      </p>
+      <label>
+        Teammate email
+        <input
+          type="email"
+          required
+          maxLength={254}
+          autoComplete="email"
+          value={email}
+          onChange={(event) => setEmail(event.target.value)}
+          placeholder="teammate@company.com"
+        />
+      </label>
+      <button className="button primary" disabled={busy}>
+        {busy ? "Inviting…" : "Invite teammate"}
+      </button>
+      {message && <p role="status">{message}</p>}
     </form>
   );
 }
@@ -2430,8 +2490,8 @@ function Login({ onDone }: { onDone: () => void }) {
     >
       <PasskeyButton onDone={onDone} />
       <p className="form-intro">
-        Use the company email your administrator invited. Your team’s stock
-        stays in your team’s pocket.
+        Use the company email your teammate invited. Your team’s stock stays in
+        your team’s pocket.
       </p>
       {stage === "email" ? (
         <label>
@@ -2487,6 +2547,21 @@ function Login({ onDone }: { onDone: () => void }) {
             ? "Verify & continue"
             : "Open my workspace"}
       </button>
+      {stage === "email" && (
+        <button
+          type="button"
+          className="text-button"
+          disabled={busy}
+          onClick={(event) => {
+            if (event.currentTarget.form?.reportValidity()) {
+              setEmail(email.trim().toLowerCase());
+              setStage("otp");
+            }
+          }}
+        >
+          I already have an email code
+        </button>
+      )}
       {stage === "otp" && (
         <button
           className="text-button"

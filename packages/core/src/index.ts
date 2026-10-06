@@ -1,5 +1,6 @@
 import { STOCKET_REPORT_LOGO } from "./brand";
 export { STOCKET_REPORT_LOGO } from "./brand";
+export { inviteTeammate } from "./invitations";
 export type Category = {
   id: string;
   name: string;

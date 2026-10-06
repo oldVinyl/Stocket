@@ -381,3 +381,101 @@ test("photo choices include webcam capture and file selection with permission fa
   await page.getByRole("button", { name: "Add to my inventory" }).click();
   await expect(page.locator(".item-card")).toHaveCount(9);
 });
+
+test("connected members invite teammates from desktop and phone settings", async ({
+  page,
+}) => {
+  const snapshot = demoSnapshot();
+  snapshot.company.name = "Acme Office";
+  await page.route("**/api/auth", (route) =>
+    route.fulfill({
+      json: { user: { id: snapshot.profile.id }, profile: snapshot.profile },
+    }),
+  );
+  await page.route("**/api/inventory", (route) =>
+    route.fulfill({ json: snapshot }),
+  );
+  const requests: unknown[] = [];
+  await page.route("**/api/invitations", (route) => {
+    requests.push(route.request().postDataJSON());
+    return route.fulfill({
+      json: {
+        warning: requests.length === 2,
+        message:
+          requests.length === 2
+            ? "Teammate added, but the email couldn't be sent. They can request a code from Stocket's sign-in screen."
+            : "Teammate invited! Ask them to open Stocket and enter the code in their email.",
+      },
+    });
+  });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  await page
+    .getByLabel("Teammate email", { exact: true })
+    .fill("one@office.com");
+  await page
+    .getByRole("button", { name: "Invite teammate", exact: true })
+    .click();
+  await expect(
+    page.getByRole("status").filter({ hasText: "Teammate invited!" }),
+  ).toBeVisible();
+  await expect(page.getByLabel("Teammate email", { exact: true })).toHaveValue(
+    "",
+  );
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page
+    .getByLabel("Teammate email", { exact: true })
+    .fill("two@office.com");
+  await page
+    .getByRole("button", { name: "Invite teammate", exact: true })
+    .click();
+  await expect(
+    page.getByRole("status").filter({ hasText: "Teammate added" }),
+  ).toBeVisible();
+  expect(requests).toEqual([
+    { email: "one@office.com" },
+    { email: "two@office.com" },
+  ]);
+  await expect(
+    page.getByText("Acme Office", { exact: true }).last(),
+  ).toBeVisible();
+});
+
+test("invited teammates can verify their existing code without sending another email", async ({
+  page,
+}) => {
+  let verified = false;
+  const posts: any[] = [];
+  await page.route("**/api/auth", (route) => {
+    if (route.request().method() === "POST") {
+      posts.push(route.request().postDataJSON());
+      verified = true;
+      return route.fulfill({ json: { ok: true } });
+    }
+    return route.fulfill({
+      json: { user: verified ? { id: "invited-member" } : null, profile: null },
+    });
+  });
+  await page.goto("/");
+  await page
+    .getByRole("button", { name: "Connect your company", exact: true })
+    .first()
+    .click();
+  await page
+    .getByLabel("Company email", { exact: true })
+    .fill("teammate@office.com");
+  await page
+    .getByRole("button", { name: "I already have an email code", exact: true })
+    .click();
+  expect(posts).toHaveLength(0);
+  await page.getByLabel("Email code", { exact: true }).fill("123456");
+  await page
+    .getByRole("button", { name: "Verify & continue", exact: true })
+    .click();
+  await expect(
+    page.getByLabel("What should we call you?", { exact: true }),
+  ).toBeVisible();
+  expect(posts).toEqual([
+    { action: "verify", email: "teammate@office.com", token: "123456" },
+  ]);
+});

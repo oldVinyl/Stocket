@@ -11,7 +11,11 @@ CREATE TABLE storage.objects(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),bucke
 ALTER TABLE storage.objects ENABLE ROW LEVEL SECURITY;
 CREATE FUNCTION storage.foldername(name text) RETURNS text[] LANGUAGE sql AS $$ SELECT string_to_array(name,'/') $$;
 GRANT USAGE ON SCHEMA public,auth,storage TO authenticated,anon; GRANT EXECUTE ON FUNCTION auth.uid() TO authenticated,anon;`);
-for (const file of ["202610060001_inventory.sql", "202610060002_alerts.sql"])
+for (const file of [
+  "202610060001_inventory.sql",
+  "202610060002_alerts.sql",
+  "202610060003_teammate_invitations.sql",
+])
   await db.exec(
     await readFile(
       new URL("../supabase/migrations/" + file, import.meta.url),
@@ -35,6 +39,10 @@ await asUser(outsider);
 await assert.rejects(
   db.query("SELECT public.onboard('Outsider','Phone')"),
   /not invited/,
+);
+await assert.rejects(
+  db.query("SELECT public.invite_teammate('new@office.com')"),
+  /Complete company sign-in/,
 );
 for (const id of [userA, userB]) {
   await asUser(id);
@@ -176,6 +184,58 @@ await assert.rejects(
     category: { id: op.catalog.category_id, name: "Paper", parent_id: child },
   }),
   /nested inside itself/,
+);
+await asUser(userA);
+await assert.rejects(
+  db.query("SELECT public.invite_teammate('invalid')"),
+  /valid teammate email/,
+);
+await assert.rejects(
+  db.query("SELECT public.invite_teammate('b@b.com')"),
+  /cannot be invited/,
+);
+const invitation = await db.query(
+  "SELECT public.invite_teammate('  X@X.COM  ') AS result",
+);
+assert.equal(invitation.rows[0].result.created, true);
+assert.equal(
+  (await db.query("SELECT public.invite_teammate('x@x.com') AS result")).rows[0]
+    .result.created,
+  false,
+);
+await db.exec("RESET ROLE");
+const allowed = (
+  await db.query("SELECT * FROM allowed_users WHERE email='x@x.com'")
+).rows[0];
+assert.equal(allowed.company_id, companyA);
+assert.equal(allowed.invited_by, userA);
+await asUser(userB);
+await assert.rejects(
+  db.query("SELECT public.invite_teammate('x@x.com')"),
+  /cannot be invited/,
+);
+await asUser(outsider);
+const joined = await db.query(
+  "SELECT to_jsonb(public.onboard('Teammate','Phone')) AS profile",
+);
+assert.equal(joined.rows[0].profile.company_id, companyA);
+await db.exec(
+  `RESET ROLE; INSERT INTO auth.users VALUES('${crypto.randomUUID()}','unverified@a.com',null);`,
+);
+const unverified = (
+  await db.query("SELECT id FROM auth.users WHERE email='unverified@a.com'")
+).rows[0].id;
+await asUser(userA);
+await db.query("SELECT public.invite_teammate('unverified@a.com')");
+await asUser(unverified);
+await assert.rejects(
+  db.query("SELECT public.onboard('Unverified','Phone')"),
+  /Verify your email/,
+);
+await db.exec("RESET ROLE; SET ROLE anon;");
+await assert.rejects(
+  db.query("SELECT public.invite_teammate('anonymous@a.com')"),
+  /permission denied/,
 );
 console.log(
   "Database checks passed: migrations, invitation gating, shared catalog, tenant isolation, blocked direct writes, additive quantities, and idempotent retries.",

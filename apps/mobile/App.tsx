@@ -68,6 +68,7 @@ import * as FileSystem from "expo-file-system/legacy";
 import Toast, { BaseToast } from "react-native-toast-message";
 import {
   InventoryStore,
+  inviteTeammate,
   catalogMatches,
   resolveStockAddition,
   validateQuantity,
@@ -999,6 +1000,7 @@ function Pocket() {
               </Pressable>
               {connected && (
                 <>
+                  <MobileInvitation s={s} />
                   <Pressable
                     style={s.secondary}
                     onPress={async () => {
@@ -1519,6 +1521,73 @@ function MobileReport({
       >
         <Text style={s.primaryText}>{busy ? "Sending…" : "Send report"}</Text>
       </Pressable>
+    </View>
+  );
+}
+function MobileInvitation({ s }: { s: ReturnType<typeof styles> }) {
+  const [email, setEmail] = useState(""),
+    [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState("");
+  return (
+    <View style={s.form}>
+      <Text style={s.sectionTitle}>Room for one more?</Text>
+      <Text style={s.subtitle}>
+        Invite a teammate to this company. They'll verify their email before
+        joining.
+      </Text>
+      <Text style={s.label}>Teammate email</Text>
+      <ThemedInput
+        style={s.input}
+        accessibilityLabel="Teammate email"
+        keyboardType="email-address"
+        autoCapitalize="none"
+        autoCorrect={false}
+        maxLength={254}
+        placeholder="teammate@company.com"
+        value={email}
+        onChangeText={setEmail}
+      />
+      <Pressable
+        accessibilityRole="button"
+        style={s.primary}
+        disabled={busy}
+        onPress={async () => {
+          setBusy(true);
+          setMessage("");
+          try {
+            const result = await inviteTeammate(email, {
+              allow: async (email) => {
+                const { data, error } = await supabase!.rpc("invite_teammate", {
+                  invitee_email: email,
+                });
+                if (error) throw new Error(error.message);
+                return data;
+              },
+              sendEmail: async (email) => {
+                const { error } = await supabase!.auth.signInWithOtp({ email });
+                if (error) throw error;
+              },
+            });
+            setMessage(result.message);
+            setEmail("");
+            notify(result.message, result.warning ? "info" : "success");
+          } catch (error) {
+            setMessage((error as Error).message);
+            notify((error as Error).message, "error");
+          } finally {
+            setBusy(false);
+          }
+        }}
+      >
+        <Text style={s.primaryText}>
+          {busy ? "Inviting…" : "Invite teammate"}
+        </Text>
+      </Pressable>
+      {!!message && (
+        <Text style={s.subtitle} accessibilityLiveRegion="polite">
+          {message}
+        </Text>
+      )}
     </View>
   );
 }
@@ -2111,8 +2180,8 @@ function MobileLogin({
         <Text style={s.adjustText}>Sign in with a passkey</Text>
       </Pressable>
       <Text style={s.subtitle}>
-        Sign in with the company email your administrator invited. Check your
-        inbox for the sign-in code.
+        Sign in with the company email your teammate invited. Check your inbox
+        for the sign-in code.
       </Text>
       {stage === "email" ? (
         <ThemedInput
@@ -2141,6 +2210,22 @@ function MobileLogin({
           onChangeText={setName}
           maxLength={80}
         />
+      )}
+      {stage === "email" && (
+        <Pressable
+          style={s.secondary}
+          disabled={busy}
+          onPress={() => {
+            if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+              notify("Enter your invited email first.", "error");
+              return;
+            }
+            setEmail(email.trim().toLowerCase());
+            setStage("otp");
+          }}
+        >
+          <Text style={s.adjustText}>I already have an email code</Text>
+        </Pressable>
       )}
       <Pressable
         style={s.primary}
