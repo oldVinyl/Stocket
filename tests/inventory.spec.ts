@@ -1,0 +1,156 @@
+import { test, expect } from "@playwright/test";
+import {
+  demoSnapshot,
+  applyMutation,
+  type Mutation,
+} from "../packages/core/src/index";
+test("local inventory persists changes, supports catalog reuse, undo, and exports", async ({
+  page,
+}) => {
+  const errors: string[] = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  await page.goto("/");
+  await expect(
+    page.getByRole("heading", { name: "Your inventory" }),
+  ).toBeVisible();
+  await expect(page.locator(".item-card")).toHaveCount(8);
+  const paper = page
+    .locator(".item-card")
+    .filter({ has: page.getByRole("heading", { name: "Printer paper A4" }) });
+  await paper.getByRole("button", { name: "Adjust stock" }).click();
+  await page.getByRole("button", { name: "Stock out" }).click();
+  await page.getByLabel("How many units?").fill("4");
+  await page.getByRole("button", { name: "Save update", exact: true }).click();
+  await expect(paper.locator(".stock-row strong")).toContainText("20");
+  await page.reload();
+  await expect(paper.locator(".stock-row strong")).toContainText("20");
+  await page.getByRole("button", { name: "Add item", exact: true }).click();
+  await page.getByLabel("Item name", { exact: true }).fill("Binder clips");
+  await page.getByLabel("Starting quantity").fill("9");
+  await page.getByRole("button", { name: "Add to my inventory" }).click();
+  await expect(page.locator(".item-card")).toHaveCount(9);
+  await page.getByLabel("Search inventory").fill("Binder");
+  const clips = page
+    .locator(".item-card")
+    .filter({ has: page.getByRole("heading", { name: "Binder clips" }) });
+  await expect(clips).toBeVisible();
+  await clips.getByRole("button", { name: "Options for Binder clips" }).click();
+  await clips.getByRole("button", { name: "Remove item" }).click();
+  await expect(clips).toHaveCount(0);
+  await page.getByRole("button", { name: "Undo", exact: true }).click();
+  await expect(clips).toBeVisible();
+  await page.getByLabel("Clear search").click();
+  await page.getByRole("button", { name: "List view", exact: true }).click();
+  await expect(page.locator(".item-grid")).toHaveClass(/list-view/);
+  await page.getByRole("button", { name: "Grid view", exact: true }).click();
+  await page.getByRole("button", { name: "Export", exact: true }).click();
+  const downloadPromise = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Download CSV" }).click();
+  expect((await downloadPromise).suggestedFilename()).toBe(
+    "stocket-inventory.csv",
+  );
+  await page.getByRole("button", { name: "Export", exact: true }).click();
+  const pdfPromise = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Download PDF" }).click();
+  expect((await pdfPromise).suggestedFilename()).toBe("stocket-inventory.pdf");
+  await page.getByRole("button", { name: "View low stock" }).click();
+  await expect(page.locator(".item-card")).toHaveCount(3);
+  await page.getByRole("button", { name: "Toggle dark mode" }).click();
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+  expect(errors).toEqual([]);
+});
+test("small screens keep stock controls visible without horizontal overflow", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/");
+  await expect(page.locator(".item-card")).toHaveCount(8);
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  ).toBe(true);
+  await page.screenshot({ path: "artifacts/web-mobile.png", fullPage: true });
+  await page.setViewportSize({ width: 1440, height: 1050 });
+  await page.screenshot({ path: "artifacts/web-desktop.png", fullPage: true });
+});
+test("connected offline deductions retry safely when the response is lost", async ({
+  page,
+  context,
+}) => {
+  let server = demoSnapshot(),
+    lost = false;
+  const applied = new Set<string>();
+  await page.route("**/api/auth", (r) =>
+    r.fulfill({
+      json: { user: { id: server.profile.id }, profile: server.profile },
+    }),
+  );
+  await page.route("**/api/inventory", async (r) => {
+    if (r.request().method() === "POST") {
+      const op = r.request().postDataJSON() as Mutation;
+      if (!applied.has(op.id)) {
+        server = applyMutation(server, op);
+        applied.add(op.id);
+      }
+      if (!lost) {
+        lost = true;
+        await r.abort("connectionreset");
+        return;
+      }
+      await r.fulfill({ json: { ok: true } });
+    } else await r.fulfill({ json: server });
+  });
+  await page.goto("/");
+  await expect(page.locator(".item-card")).toHaveCount(8);
+  await context.setOffline(true);
+  await expect(page.locator(".sync-label")).toContainText("Offline");
+  const paper = page
+    .locator(".item-card")
+    .filter({ has: page.getByRole("heading", { name: "Printer paper A4" }) });
+  await paper.getByRole("button", { name: "Adjust stock" }).click();
+  await page.getByRole("button", { name: "Stock out" }).click();
+  await page.getByLabel("How many units?").fill("4");
+  await page.getByRole("button", { name: "Save update", exact: true }).click();
+  await expect(paper.locator(".stock-row strong")).toContainText("20");
+  expect(server.items[0].quantity).toBe(24);
+  await context.setOffline(false);
+  await expect(page.getByText("Your changes are saved here.")).toBeVisible();
+  await page.getByRole("button", { name: "Try sync again" }).click();
+  await expect(page.locator(".sync-label")).toContainText("All changes synced");
+  expect(server.items[0].quantity).toBe(20);
+  expect(applied.size).toBe(1);
+  await page.reload();
+  await expect(paper.locator(".stock-row strong")).toContainText("20");
+});
+test("production app reloads and exports while fully offline", async ({
+  page,
+  context,
+}) => {
+  test.skip(
+    !process.env.TEST_OFFLINE_SHELL,
+    "Production-only service worker check",
+  );
+  await page.goto("/");
+  await expect(page.locator(".item-card")).toHaveCount(8);
+  await page.evaluate(async () => {
+    await navigator.serviceWorker.ready;
+    if (!navigator.serviceWorker.controller)
+      await new Promise<void>((resolve) =>
+        navigator.serviceWorker.addEventListener(
+          "controllerchange",
+          () => resolve(),
+          { once: true },
+        ),
+      );
+  });
+  await page.waitForLoadState("networkidle");
+  await context.setOffline(true);
+  await page.reload();
+  await expect(page.locator(".item-card")).toHaveCount(8);
+  await expect(page.locator(".sync-label")).toContainText("Offline");
+  await page.getByRole("button", { name: "Export", exact: true }).click();
+  const download = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Download PDF" }).click();
+  expect((await download).suggestedFilename()).toBe("stocket-inventory.pdf");
+});
