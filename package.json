@@ -1,0 +1,24 @@
+{
+  "name": "stocket",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev -w @stocket/web",
+    "mobile": "npm run start -w @stocket/mobile",
+    "build": "npm run build -w @stocket/web",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "npm run test -w @stocket/core",
+    "test:db": "node scripts/database-test.mjs",
+    "test:e2e": "playwright test",
+    "format": "prettier --write apps packages scripts tests playwright.config.ts package.json"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "^0.5.8",
+    "@playwright/test": "^1.63.0",
+    "prettier": "^3.9.9"
+  }
+}

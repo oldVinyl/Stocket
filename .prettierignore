@@ -1,0 +1,8 @@
+node_modules
+.next
+.expo
+artifacts
+package-lock.json
+audit.json
+test-results
+supabase/migrations

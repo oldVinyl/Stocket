@@ -1,0 +1,16 @@
+node_modules/
+.next/
+.expo/
+dist/
+coverage/
+.env*
+!.env.example
+*.tsbuildinfo
+test-results/
+playwright-report/
+artifacts/
+audit.json
+**/google-services.json
+**/GoogleService-Info.plist
+apps/mobile/android/
+apps/mobile/ios/
