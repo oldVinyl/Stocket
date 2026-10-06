@@ -36,7 +36,6 @@ import * as ImageManipulator from "expo-image-manipulator";
 import * as Print from "expo-print";
 import * as Sharing from "expo-sharing";
 import * as FileSystem from "expo-file-system/legacy";
-import * as Notifications from "expo-notifications";
 import Toast, { BaseToast } from "react-native-toast-message";
 import {
   InventoryStore,
@@ -53,6 +52,7 @@ import {
 import { persistence } from "./src/storage";
 import { remote, supabase } from "./src/backend";
 import { nativePasskey } from "./src/passkeys";
+import { isExpoGo } from "./src/runtime";
 import {
   enableNotifications,
   disableNotifications,
@@ -68,6 +68,8 @@ const palette = {
   soft: "#edf2fb",
   alert: "#b95027",
   alertBg: "#fff1e6",
+  movementPositive: "#217A4B",
+  movementNegative: "#C7353A",
 };
 const darkPalette = {
   ...palette,
@@ -79,6 +81,8 @@ const darkPalette = {
   soft: "#203f71",
   alert: "#ffc09d",
   alertBg: "#533c3d",
+  movementPositive: "#72D9A2",
+  movementNegative: "#FF8E95",
 };
 type Form =
   | { kind: "add" }
@@ -550,7 +554,14 @@ function Pocket() {
               <Text
                 style={[
                   s.quantity,
-                  { color: e.delta >= 0 ? p.primary : p.alert },
+                  {
+                    color:
+                      e.delta > 0
+                        ? p.movementPositive
+                        : e.delta < 0
+                          ? p.movementNegative
+                          : p.muted,
+                  },
                 ]}
               >
                 {e.delta > 0 ? "+" : ""}
@@ -645,7 +656,9 @@ function Pocket() {
                   }}
                 >
                   <Text style={s.adjustText}>
-                    Enable low-stock notifications
+                    {isExpoGo
+                      ? "About push alerts in Expo Go"
+                      : "Enable low-stock notifications"}
                   </Text>
                 </Pressable>
                 <Pressable

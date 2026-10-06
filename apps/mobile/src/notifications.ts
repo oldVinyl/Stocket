@@ -1,11 +1,17 @@
 import * as Device from "expo-device";
-import * as Notifications from "expo-notifications";
 import { Platform } from "react-native";
 import { supabase } from "./backend";
 import * as SecureStore from "expo-secure-store";
+import { isExpoGo } from "./runtime";
 export async function enableNotifications() {
+  if (isExpoGo)
+    throw new Error(
+      "Remote push alerts need a Stocket development build. In Expo Go, use the low-stock list to check what needs a top-up.",
+    );
   if (!Device.isDevice || !supabase)
     throw new Error("Notifications need a connected physical device.");
+  // Importing this module eagerly triggers Expo Go's unsupported-push error.
+  const Notifications = await import("expo-notifications");
   if (Platform.OS === "android")
     await Notifications.setNotificationChannelAsync("stock-alerts", {
       name: "Low stock",
@@ -35,6 +41,7 @@ export async function disableNotifications() {
   await SecureStore.deleteItemAsync("stocket.push-token");
 }
 export async function listenForStockAlerts(onAlert: (body: string) => void) {
+  if (isExpoGo) return () => {};
   if (!(await SecureStore.getItemAsync("stocket.push-token"))) return () => {};
   const { getMessaging, onMessage, onTokenRefresh } =
     await import("@react-native-firebase/messaging");

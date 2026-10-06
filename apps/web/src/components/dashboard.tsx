@@ -617,11 +617,10 @@ export default function Dashboard() {
         </nav>
         <div className="sidebar-bottom">
           <div className="pocket-card">
-            <span className="mini-orbit">
-              <Smartphone size={29} />
-              <span>✦</span>
-            </span>
-            <strong>Your stock. Your pocket.</strong>
+            <strong className="pocket-card-title">
+              <Smartphone size={21} aria-hidden="true" />
+              <span>Your stock. Your pocket.</span>
+            </strong>
             <p>
               Keep things moving,
               <br />
@@ -1368,7 +1367,11 @@ export default function Dashboard() {
                       </div>
                       <span
                         className={
-                          event.delta >= 0 ? "delta-positive" : "warning-text"
+                          event.delta > 0
+                            ? "delta-positive"
+                            : event.delta < 0
+                              ? "delta-negative"
+                              : ""
                         }
                       >
                         {event.delta > 0 ? "+" : ""}

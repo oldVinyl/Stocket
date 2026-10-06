@@ -101,7 +101,7 @@ export default function Overview({
               return (
                 <div key={event.id}>
                   <span
-                    className={`event-delta ${event.delta > 0 ? "positive" : "negative"}`}
+                    className={`event-delta ${event.delta > 0 ? "delta-positive" : event.delta < 0 ? "delta-negative" : ""}`}
                   >
                     {event.delta > 0 ? "+" : ""}
                     {event.delta}

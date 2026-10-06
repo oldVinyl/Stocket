@@ -13,6 +13,8 @@
   --alert-bg: #fff1e6;
   --shadow: 0 3px 15px #102b5305;
   --sidebar: 254px;
+  --movement-positive: #217a4b;
+  --movement-negative: #c7353a;
   color-scheme: light;
 }
 :root[data-theme="dark"] {
@@ -28,6 +30,8 @@
   --alert-bg: #533c3d;
   --shadow: none;
   color-scheme: dark;
+  --movement-positive: #72d9a2;
+  --movement-negative: #ff8e95;
 }
 * {
   box-sizing: border-box;
@@ -252,6 +256,15 @@ svg {
 .pocket-card strong {
   font-size: 16px;
   display: block;
+}
+.pocket-card .pocket-card-title {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+.pocket-card-title svg {
+  margin-top: 2px;
+  color: #334eac;
 }
 .pocket-card p {
   font-size: 14px;
@@ -1028,7 +1041,10 @@ h3 {
   font-size: 14px;
 }
 .delta-positive {
-  color: var(--primary);
+  color: var(--movement-positive);
+}
+.delta-negative {
+  color: var(--movement-negative);
 }
 .settings-grid {
   display: grid;

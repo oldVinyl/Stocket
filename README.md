@@ -25,6 +25,8 @@ The pocket companion panel links to `https://github.com/oldVinyl` for now. Set `
 
 Expo Go can exercise the SQLite inventory, OTP flow, camera, and local exports. Passkeys and Firebase require a native development build. `npm run android -w @stocket/mobile` builds Android with its SDK installed; iOS builds require macOS/Xcode or EAS. No app-store deployment or EAS project has been created.
 
+Remote push alerts are skipped in Expo Go; opening the push-alert setting explains that a development build is needed. Native notification modules load only after that runtime check, so Expo Go can open the inventory without the unsupported-push startup error. To test real push delivery, configure Firebase as described below, install a native Stocket development build on your device, and enable low-stock notifications there.
+
 ## What is implemented
 
 - Quicksand, Stocket colors, dark mode, safe areas, intentional catalog fallbacks, action toasts, and low-stock states using semantic orange.
