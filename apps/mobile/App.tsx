@@ -9,7 +9,7 @@ import {
   ActivityIndicator,
   Alert,
   Image,
-  Modal,
+  Keyboard,
   PanResponder,
   Pressable,
   ScrollView,
@@ -83,6 +83,7 @@ import {
 import { persistence } from "./src/storage";
 import { remote, supabase } from "./src/backend";
 import { nativePasskey } from "./src/passkeys";
+import BottomSheet from "./src/bottom-sheet";
 import { isExpoGo } from "./src/runtime";
 import {
   enableNotifications,
@@ -1139,16 +1140,19 @@ function Pocket() {
             </Pressable>
           ))}
         </View>
-        <Modal
+        <BottomSheet
           visible={reminders || guide !== null}
-          animationType="slide"
-          presentationStyle="pageSheet"
-          onRequestClose={() => {
+          backgroundColor={p.surface}
+          handleColor={p.muted}
+          onClose={() => {
             setReminders(false);
             setGuide(null);
           }}
         >
-          <SafeAreaView style={s.safe}>
+          <SafeAreaView
+            edges={["bottom", "left", "right"]}
+            style={[s.safe, { backgroundColor: p.surface }]}
+          >
             <ScrollView contentContainerStyle={s.content}>
               <View style={s.sectionRow}>
                 <Text style={[s.sectionTitle, { flex: 1 }]}>
@@ -1258,14 +1262,17 @@ function Pocket() {
               )}
             </ScrollView>
           </SafeAreaView>
-        </Modal>
-        <Modal
+        </BottomSheet>
+        <BottomSheet
           visible={!!form}
-          animationType="slide"
-          presentationStyle="pageSheet"
-          onRequestClose={() => setForm(null)}
+          backgroundColor={p.surface}
+          handleColor={p.muted}
+          onClose={() => setForm(null)}
         >
-          <SafeAreaView style={s.safe}>
+          <SafeAreaView
+            edges={["bottom", "left", "right"]}
+            style={[s.safe, { backgroundColor: p.surface }]}
+          >
             <ScrollView
               contentContainerStyle={s.content}
               keyboardShouldPersistTaps="handled"
@@ -1340,7 +1347,7 @@ function Pocket() {
               )}
             </ScrollView>
           </SafeAreaView>
-        </Modal>
+        </BottomSheet>
         <Toast
           config={{
             success: (props) => (
@@ -1549,6 +1556,7 @@ function MobileForm({
     ),
     [direction, setDirection] = useState(1),
     [photo, setPhoto] = useState<string>(),
+    [photoOptions, setPhotoOptions] = useState(false),
     [busy, setBusy] = useState(false),
     [categoryName, setCategoryName] = useState(""),
     [categoryParent, setCategoryParent] = useState<string | null>(null);
@@ -1594,8 +1602,43 @@ function MobileForm({
     }
   }
   const addition = resolveStockAddition(data, name, selected);
+  const theme = React.useContext(ThemePalette);
   return (
     <View style={s.form}>
+      <BottomSheet
+        visible={photoOptions}
+        onClose={() => setPhotoOptions(false)}
+        backgroundColor={theme.surface}
+        handleColor={theme.muted}
+      >
+        <SafeAreaView edges={["bottom"]} style={[s.content, { flex: 1 }]}>
+          <Text style={s.sectionTitle}>Add a supply photo</Text>
+          <Text style={s.subtitle}>
+            Take a new photo or choose one already on your phone.
+          </Text>
+          <Pressable
+            style={s.primary}
+            onPress={() => {
+              setPhotoOptions(false);
+              setTimeout(() => void camera(), 250);
+            }}
+          >
+            <Text style={s.primaryText}>Use camera</Text>
+          </Pressable>
+          <Pressable
+            style={s.secondary}
+            onPress={() => {
+              setPhotoOptions(false);
+              setTimeout(() => void camera(true), 250);
+            }}
+          >
+            <Text style={s.adjustText}>Choose from photo library</Text>
+          </Pressable>
+          <Pressable style={s.secondary} onPress={() => setPhotoOptions(false)}>
+            <Text style={s.adjustText}>Cancel</Text>
+          </Pressable>
+        </SafeAreaView>
+      </BottomSheet>
       {form.kind === "add" ? (
         <>
           <Text style={s.subtitle}>
@@ -1682,16 +1725,18 @@ function MobileForm({
               >
                 <Text style={s.adjustText}>Create category</Text>
               </Pressable>
-              <Pressable style={s.secondary} onPress={() => void camera()}>
+              <Pressable
+                style={s.secondary}
+                onPress={() => {
+                  Keyboard.dismiss();
+                  setPhotoOptions(true);
+                }}
+              >
                 <IconLabel icon={Camera} textStyle={s.adjustText}>
                   {photo ? "Retake photo" : "Take a photo"}
                 </IconLabel>
               </Pressable>
-              <Pressable style={s.secondary} onPress={() => void camera(true)}>
-                <IconLabel icon={Camera} textStyle={s.adjustText}>
-                  Choose a photo
-                </IconLabel>
-              </Pressable>
+
               {photo && (
                 <Image
                   source={{ uri: photo }}
@@ -1707,7 +1752,17 @@ function MobileForm({
                         await supabase!.functions.invoke("suggest-category", {
                           body: { name },
                         });
-                      if (error) throw error;
+                      if (error) {
+                        const response = (error as { context?: Response })
+                          .context;
+                        const detail = response
+                          ? await response.json().catch(() => null)
+                          : null;
+                        throw new Error(
+                          detail?.error ??
+                            "AI suggestions need the deployed suggest-category function and GEMINI_API_KEY. Manual categories still work.",
+                        );
+                      }
                       if (result.category_id) setCat(result.category_id);
                       else if (result.name) {
                         setCategoryName(result.name);

@@ -1,5 +1,5 @@
 "use client";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import {
   Archive,
   ArrowDown,
@@ -7,6 +7,7 @@ import {
   ArrowRight,
   ArrowUp,
   Bell,
+  Camera,
   Box,
   Check,
   ChevronDown,
@@ -42,6 +43,7 @@ import {
   X,
 } from "lucide-react";
 import { toast } from "sonner";
+import { createPortal } from "react-dom";
 import {
   catalogMatches,
   resolveStockAddition,
@@ -71,6 +73,7 @@ type Modal =
   | { kind: "login" }
   | { kind: "help" }
   | { kind: "companion" }
+  | { kind: "report"; item: Item }
   | null;
 const icons = [FileText, Box, Pencil, Folder];
 function SupplyArt({
@@ -401,58 +404,62 @@ export default function Dashboard() {
   }
   function accountMenu() {
     return (
-      <div
-        className="dropdown account-menu"
-        aria-label="Account menu"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <strong>{data?.profile.name ?? "Your account"}</strong>
-        <small>
-          {connected ? data?.profile.email : "You’re exploring the local demo"}
-        </small>
-        <button
-          onClick={() => {
-            setTab("Settings");
-            setMenu(null);
-          }}
+      <PhonePopup title="Your account" onClose={() => setMenu(null)}>
+        <div
+          className="dropdown account-menu"
+          aria-label="Account menu"
+          onClick={(e) => e.stopPropagation()}
         >
-          <Settings size={17} /> Account & workspace
-        </button>
-        <button onClick={toggleTheme}>
-          {dark ? <Sun size={17} /> : <Moon size={17} />} Use{" "}
-          {dark ? "light" : "dark"} mode
-        </button>
-        <button
-          onClick={() => {
-            setMenu(null);
-            setModal({ kind: "help" });
-          }}
-        >
-          <CircleHelp size={17} /> Help & getting started
-        </button>
-        <button
-          onClick={() => {
-            setMenu(null);
-            setModal({ kind: "companion" });
-          }}
-        >
-          <Smartphone size={17} /> Get Stocket on your phone
-        </button>
-        {connected ? (
-          <button onClick={() => void signOut()}>
-            <LogOut size={17} /> Sign out
-          </button>
-        ) : (
+          <strong>{data?.profile.name ?? "Your account"}</strong>
+          <small>
+            {connected
+              ? data?.profile.email
+              : "You’re exploring the local demo"}
+          </small>
           <button
             onClick={() => {
-              setModal({ kind: "login" });
+              setTab("Settings");
               setMenu(null);
             }}
           >
-            <Users size={17} /> Connect your company
+            <Settings size={17} /> Account & workspace
           </button>
-        )}
-      </div>
+          <button onClick={toggleTheme}>
+            {dark ? <Sun size={17} /> : <Moon size={17} />} Use{" "}
+            {dark ? "light" : "dark"} mode
+          </button>
+          <button
+            onClick={() => {
+              setMenu(null);
+              setModal({ kind: "help" });
+            }}
+          >
+            <CircleHelp size={17} /> Help & getting started
+          </button>
+          <button
+            onClick={() => {
+              setMenu(null);
+              setModal({ kind: "companion" });
+            }}
+          >
+            <Smartphone size={17} /> Get Stocket on your phone
+          </button>
+          {connected ? (
+            <button onClick={() => void signOut()}>
+              <LogOut size={17} /> Sign out
+            </button>
+          ) : (
+            <button
+              onClick={() => {
+                setModal({ kind: "login" });
+                setMenu(null);
+              }}
+            >
+              <Users size={17} /> Connect your company
+            </button>
+          )}
+        </div>
+      </PhonePopup>
     );
   }
   async function startTour() {
@@ -728,52 +735,57 @@ export default function Dashboard() {
                 {low.length > 0 && <i />}
               </button>
               {menu === "notifications" && (
-                <section
-                  className="notification-panel"
-                  aria-label="Stock reminders"
-                  onClick={(e) => e.stopPropagation()}
+                <PhonePopup
+                  title="Stock reminders"
+                  onClose={() => setMenu(null)}
                 >
-                  <div className="overview-title">
-                    <h2>Stock reminders</h2>
-                    <span className="reminder-count">{low.length}</span>
-                  </div>
-                  <p>
-                    {low.length
-                      ? `${low.length} ${low.length === 1 ? "supply needs" : "supplies need"} a top-up.`
-                      : "All stocked up. No low-stock reminders right now."}
-                  </p>
-                  {low.slice(0, 3).map((item) => (
-                    <button
-                      className="reminder-item"
-                      key={item.id}
-                      onClick={() => showInventory(true)}
-                    >
-                      <TriangleAlert size={18} />
-                      <span>
-                        <strong>
-                          {
-                            data?.catalog.find(
-                              (c) => c.id === item.catalog_item_id,
-                            )?.name
-                          }
-                        </strong>
-                        <small>
-                          {item.quantity} left · threshold{" "}
-                          {item.low_stock_threshold}
-                        </small>
-                      </span>
-                      <ArrowRight size={16} />
-                    </button>
-                  ))}
-                  {low.length > 0 && (
-                    <button
-                      className="button primary"
-                      onClick={() => showInventory(true)}
-                    >
-                      View low-stock inventory <ArrowRight size={16} />
-                    </button>
-                  )}
-                </section>
+                  <section
+                    className="notification-panel"
+                    aria-label="Stock reminders"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <div className="overview-title">
+                      <h2>Stock reminders</h2>
+                      <span className="reminder-count">{low.length}</span>
+                    </div>
+                    <p>
+                      {low.length
+                        ? `${low.length} ${low.length === 1 ? "supply needs" : "supplies need"} a top-up.`
+                        : "All stocked up. No low-stock reminders right now."}
+                    </p>
+                    {low.slice(0, 3).map((item) => (
+                      <button
+                        className="reminder-item"
+                        key={item.id}
+                        onClick={() => showInventory(true)}
+                      >
+                        <TriangleAlert size={18} />
+                        <span>
+                          <strong>
+                            {
+                              data?.catalog.find(
+                                (c) => c.id === item.catalog_item_id,
+                              )?.name
+                            }
+                          </strong>
+                          <small>
+                            {item.quantity} left · threshold{" "}
+                            {item.low_stock_threshold}
+                          </small>
+                        </span>
+                        <ArrowRight size={16} />
+                      </button>
+                    ))}
+                    {low.length > 0 && (
+                      <button
+                        className="button primary"
+                        onClick={() => showInventory(true)}
+                      >
+                        View low-stock inventory <ArrowRight size={16} />
+                      </button>
+                    )}
+                  </section>
+                </PhonePopup>
               )}
             </div>
             <div className="top-account">
@@ -845,16 +857,21 @@ export default function Dashboard() {
                     <ChevronDown size={15} />
                   </button>
                   {menu === "export" && (
-                    <div className="dropdown">
-                      <button onClick={() => void exportData("csv")}>
-                        <FileText size={17} />
-                        Download CSV
-                      </button>
-                      <button onClick={() => void exportData("pdf")}>
-                        <FileText size={17} />
-                        Download PDF
-                      </button>
-                    </div>
+                    <PhonePopup
+                      title="Export your inventory"
+                      onClose={() => setMenu(null)}
+                    >
+                      <div className="dropdown">
+                        <button onClick={() => void exportData("csv")}>
+                          <FileText size={17} />
+                          Download CSV
+                        </button>
+                        <button onClick={() => void exportData("pdf")}>
+                          <FileText size={17} />
+                          Download PDF
+                        </button>
+                      </div>
+                    </PhonePopup>
                   )}
                 </div>
                 <button
@@ -1153,60 +1170,46 @@ export default function Dashboard() {
                                   <MoreHorizontal size={21} />
                                 </button>
                                 {menu === item.id && (
-                                  <div
-                                    className="dropdown"
-                                    onClick={(e) => e.stopPropagation()}
+                                  <PhonePopup
+                                    title={c.name}
+                                    onClose={() => setMenu(null)}
                                   >
-                                    <button
-                                      onClick={() => {
-                                        setModal({ kind: "edit", item });
-                                        setMenu(null);
-                                      }}
+                                    <div
+                                      className="dropdown"
+                                      onClick={(e) => e.stopPropagation()}
                                     >
-                                      <Pencil size={16} />
-                                      Edit threshold
-                                    </button>
-                                    {connected && (
                                       <button
                                         onClick={() => {
-                                          const reason = prompt(
-                                            "What should we fix about this catalog item?",
-                                          );
-                                          if (reason)
-                                            void request("/api/catalog", {
-                                              method: "POST",
-                                              body: JSON.stringify({
-                                                action: "report",
-                                                catalog_id: c.id,
-                                                reason,
-                                              }),
-                                            })
-                                              .then(() =>
-                                                toast.success(
-                                                  "Thanks for helping keep the catalog useful.",
-                                                ),
-                                              )
-                                              .catch((e) =>
-                                                toast.error(e.message),
-                                              );
+                                          setModal({ kind: "edit", item });
                                           setMenu(null);
                                         }}
                                       >
-                                        <TriangleAlert size={16} />
-                                        Report catalog item
+                                        <Pencil size={16} />
+                                        Edit threshold
                                       </button>
-                                    )}
-                                    <button
-                                      className="danger"
-                                      onClick={() => {
-                                        void remove(item);
-                                        setMenu(null);
-                                      }}
-                                    >
-                                      <Trash2 size={16} />
-                                      Remove item
-                                    </button>
-                                  </div>
+                                      {connected && (
+                                        <button
+                                          onClick={() => {
+                                            setModal({ kind: "report", item });
+                                            setMenu(null);
+                                          }}
+                                        >
+                                          <TriangleAlert size={16} />
+                                          Report catalog item
+                                        </button>
+                                      )}
+                                      <button
+                                        className="danger"
+                                        onClick={() => {
+                                          void remove(item);
+                                          setMenu(null);
+                                        }}
+                                      >
+                                        <Trash2 size={16} />
+                                        Remove item
+                                      </button>
+                                    </div>
+                                  </PhonePopup>
                                 )}
                               </div>
                             </div>
@@ -1512,9 +1515,11 @@ export default function Dashboard() {
                   ? "Set a friendly reminder"
                   : modal.kind === "help"
                     ? "Help & getting started"
-                    : modal.kind === "companion"
-                      ? "Your stock. Your pocket."
-                      : "Welcome to Stocket"
+                    : modal.kind === "report"
+                      ? "Report a catalog issue"
+                      : modal.kind === "companion"
+                        ? "Your stock. Your pocket."
+                        : "Welcome to Stocket"
           }
           onClose={() => setModal(null)}
         >
@@ -1530,11 +1535,17 @@ export default function Dashboard() {
               onTour={() => void startTour()}
               onCompanion={() => setModal({ kind: "companion" })}
             />
+          ) : modal.kind === "report" ? (
+            <CatalogReport
+              catalogId={modal.item.catalog_item_id}
+              onDone={() => setModal(null)}
+            />
           ) : modal.kind === "companion" ? (
             <CompanionGuide />
           ) : (
             data && (
               <ItemForm
+                connected={connected}
                 modal={modal}
                 data={data}
                 onCreateCategory={async (name, parent) => {
@@ -1570,6 +1581,173 @@ export default function Dashboard() {
     </div>
   );
 }
+function CatalogReport({
+  catalogId,
+  onDone,
+}: {
+  catalogId: string;
+  onDone: () => void;
+}) {
+  const [reason, setReason] = useState(""),
+    [busy, setBusy] = useState(false);
+  return (
+    <form
+      className="item-form"
+      onSubmit={async (event) => {
+        event.preventDefault();
+        setBusy(true);
+        try {
+          await request("/api/catalog", {
+            method: "POST",
+            body: JSON.stringify({
+              action: "report",
+              catalog_id: catalogId,
+              reason,
+            }),
+          });
+          toast.success("Thanks for helping keep the catalog useful.");
+          onDone();
+        } catch (e) {
+          toast.error((e as Error).message);
+        } finally {
+          setBusy(false);
+        }
+      }}
+    >
+      <p className="form-intro">
+        Tell us what needs fixing about this supply's shared name or photo.
+      </p>
+      <label>
+        What needs fixing?
+        <textarea
+          required
+          minLength={3}
+          maxLength={500}
+          value={reason}
+          onChange={(event) => setReason(event.target.value)}
+        />
+      </label>
+      <button className="button primary" disabled={busy}>
+        {busy ? "Sending…" : "Send report"}
+      </button>
+    </form>
+  );
+}
+function PhonePopup({
+  title,
+  onClose,
+  children,
+}: {
+  title: string;
+  onClose: () => void;
+  children: React.ReactNode;
+}) {
+  const [phone, setPhone] = useState(false);
+  useEffect(() => {
+    const query = window.matchMedia("(max-width: 720px)");
+    const update = () => setPhone(query.matches);
+    update();
+    query.addEventListener("change", update);
+    return () => query.removeEventListener("change", update);
+  }, []);
+  return phone ? (
+    createPortal(
+      <Dialog title={title} onClose={onClose}>
+        <div className="sheet-popup">{children}</div>
+      </Dialog>,
+      document.body,
+    )
+  ) : (
+    <>{children}</>
+  );
+}
+function CameraCapture({
+  onPhoto,
+  onClose,
+}: {
+  onPhoto: (file: File) => Promise<void>;
+  onClose: () => void;
+}) {
+  const video = useRef<HTMLVideoElement>(null);
+  const [ready, setReady] = useState(false),
+    [error, setError] = useState("");
+  useEffect(() => {
+    let active = true,
+      stream: MediaStream | null = null;
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setError(
+        "Camera access needs HTTPS and a supported browser. You can choose a photo instead.",
+      );
+      return;
+    }
+    void navigator.mediaDevices
+      .getUserMedia({
+        video: { facingMode: { ideal: "environment" } },
+        audio: false,
+      })
+      .then((next) => {
+        if (!active) {
+          next.getTracks().forEach((track) => track.stop());
+          return;
+        }
+        stream = next;
+        if (video.current) video.current.srcObject = next;
+      })
+      .catch(() =>
+        setError(
+          "Camera access was denied or no camera was found. Allow camera access in your browser, or choose a photo instead.",
+        ),
+      );
+    return () => {
+      active = false;
+      stream?.getTracks().forEach((track) => track.stop());
+    };
+  }, []);
+  return (
+    <Dialog title="Take a supply photo" onClose={onClose}>
+      {error ? (
+        <p role="alert" className="form-intro">
+          {error}
+        </p>
+      ) : (
+        <video
+          ref={video}
+          autoPlay
+          muted
+          playsInline
+          className="camera-preview"
+          onLoadedData={() => setReady(true)}
+        />
+      )}
+      <div className="photo-options">
+        <button
+          type="button"
+          className="button primary"
+          disabled={!ready || !!error}
+          onClick={() => {
+            if (!video.current) return;
+            const canvas = document.createElement("canvas");
+            canvas.width = video.current.videoWidth;
+            canvas.height = video.current.videoHeight;
+            canvas.getContext("2d")?.drawImage(video.current, 0, 0);
+            canvas.toBlob((blob) => {
+              if (blob)
+                void onPhoto(
+                  new File([blob], "supply-photo.png", { type: "image/png" }),
+                );
+            }, "image/png");
+          }}
+        >
+          <Camera size={18} />
+          Capture photo
+        </button>
+        <button type="button" className="button secondary" onClick={onClose}>
+          Back to photo choices
+        </button>
+      </div>
+    </Dialog>
+  );
+}
 function Dialog({
   title,
   onClose,
@@ -1580,18 +1758,39 @@ function Dialog({
   children: React.ReactNode;
 }) {
   const ref = useRef<HTMLDivElement>(null);
+  const titleId = useId();
+  const [offset, setOffset] = useState(0),
+    [expanded, setExpanded] = useState(false);
+  const drag = useRef<{ y: number; at: number } | null>(null);
+  const dragged = useRef(false);
+  useEffect(() => {
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previous;
+    };
+  }, []);
   useEffect(() => {
     const prior = document.activeElement as HTMLElement;
     const root = ref.current;
-    root?.querySelector<HTMLElement>("input, button")?.focus();
+    Array.from(
+      root?.querySelectorAll<HTMLElement>("input, textarea, select, button") ??
+        [],
+    )
+      .find((element) => element.getClientRects().length > 0)
+      ?.focus();
     const listener = (e: KeyboardEvent) => {
+      if (
+        Array.from(document.querySelectorAll('[role="dialog"]')).at(-1) !== root
+      )
+        return;
       if (e.key === "Escape") onClose();
       if (e.key === "Tab" && root) {
         const els = Array.from(
           root.querySelectorAll<HTMLElement>(
             'a[href],button:not(:disabled),input,select,textarea,[tabindex="0"]',
           ),
-        );
+        ).filter((element) => element.getClientRects().length > 0);
         const first = els[0],
           last = els.at(-1);
         if (e.shiftKey && document.activeElement === first) {
@@ -1617,14 +1816,55 @@ function Dialog({
       }}
     >
       <div
-        className="modal"
+        className={`modal ${expanded ? "sheet-expanded" : ""}`}
+        style={{ "--sheet-drag": `${offset}px` } as React.CSSProperties}
         role="dialog"
         aria-modal="true"
-        aria-labelledby="dialog-title"
+        aria-labelledby={titleId}
         ref={ref}
+        onClick={(event) => event.stopPropagation()}
       >
+        <button
+          type="button"
+          className="sheet-handle"
+          aria-label="Drag sheet; tap to expand or collapse"
+          onClick={() => {
+            if (dragged.current) {
+              dragged.current = false;
+              return;
+            }
+            setExpanded(!expanded);
+          }}
+          onPointerDown={(event) => {
+            dragged.current = false;
+            drag.current = { y: event.clientY, at: Date.now() };
+            event.currentTarget.setPointerCapture(event.pointerId);
+          }}
+          onPointerMove={(event) => {
+            if (drag.current) {
+              dragged.current = Math.abs(event.clientY - drag.current.y) > 8;
+              setOffset(event.clientY - drag.current.y);
+            }
+          }}
+          onPointerUp={(event) => {
+            if (!drag.current) return;
+            const dy = event.clientY - drag.current.y;
+            const elapsed = Date.now() - drag.current.at;
+            drag.current = null;
+            setOffset(0);
+            if (dy > 110 || (dy > 45 && elapsed < 180)) onClose();
+            else if (dy < -35) setExpanded(true);
+            else if (dy > 35) setExpanded(false);
+          }}
+          onPointerCancel={() => {
+            drag.current = null;
+            setOffset(0);
+          }}
+        >
+          <span />
+        </button>
         <div className="modal-title">
-          <h2 id="dialog-title">{title}</h2>
+          <h2 id={titleId}>{title}</h2>
           <button
             className="icon-btn"
             aria-label="Close dialog"
@@ -1639,18 +1879,16 @@ function Dialog({
   );
 }
 function ItemForm({
+  connected,
   modal,
   data,
   onSave,
   onCreateCategory,
 }: {
+  connected: boolean;
   modal: Exclude<
     Modal,
-    | null
-    | { kind: "login" }
-    | { kind: "help" }
-    | { kind: "companion" }
-    | { kind: "companion" }
+    null | { kind: "login" } | { kind: "help" } | { kind: "companion" }
   >;
   data: Snapshot;
   onSave: (fields: Record<string, unknown>) => Promise<void>;
@@ -1676,6 +1914,8 @@ function ItemForm({
     [busy, setBusy] = useState(false),
     [photo, setPhoto] = useState<string>(),
     [suggesting, setSuggesting] = useState(false),
+    [photoChoice, setPhotoChoice] = useState(false),
+    [cameraOpen, setCameraOpen] = useState(false),
     [categorySuggestion, setCategorySuggestion] = useState<{
       name: string;
       parent_id: string | null;
@@ -1709,6 +1949,8 @@ function ItemForm({
       toast.error((e as Error).message);
     }
   }
+  const cameraFile = useRef<HTMLInputElement>(null),
+    libraryFile = useRef<HTMLInputElement>(null);
   const addition = resolveStockAddition(data, name, selected);
   return (
     <form
@@ -1843,6 +2085,12 @@ function ItemForm({
                 className="suggest-button"
                 disabled={suggesting || !name.trim()}
                 onClick={async () => {
+                  if (!connected) {
+                    toast.info(
+                      "Free-tier AI needs a connected company, GEMINI_API_KEY, and the deployed suggest-category function. Manual categories work in the demo.",
+                    );
+                    return;
+                  }
                   setSuggesting(true);
                   try {
                     const result = await request("/api/catalog", {
@@ -1907,24 +2155,91 @@ function ItemForm({
                   </button>
                 </div>
               )}
-              <label className="photo-picker">
+              <button
+                type="button"
+                className="photo-picker"
+                onClick={() => setPhotoChoice(true)}
+              >
                 {photo ? (
                   <img src={photo} alt="Your captured supply" />
                 ) : (
                   <span>
-                    <Plus size={22} />
-                    Add a photo <small>Camera or file · resized to WebP</small>
+                    <Camera size={22} />
+                    Take a photo{" "}
+                    <small>Camera or photo library · resized to WebP</small>
                   </span>
                 )}
-                <input
-                  type="file"
-                  accept="image/*"
-                  capture="environment"
-                  onChange={(e) => {
-                    if (e.target.files?.[0]) void readPhoto(e.target.files[0]);
+              </button>
+              <input
+                hidden
+                ref={cameraFile}
+                type="file"
+                accept="image/*"
+                capture="environment"
+                onChange={(event) => {
+                  if (event.target.files?.[0])
+                    void readPhoto(event.target.files[0]);
+                  event.target.value = "";
+                }}
+              />
+              <input
+                hidden
+                ref={libraryFile}
+                type="file"
+                accept="image/*"
+                onChange={(event) => {
+                  if (event.target.files?.[0])
+                    void readPhoto(event.target.files[0]);
+                  event.target.value = "";
+                }}
+              />
+              {photoChoice && (
+                <Dialog
+                  title="Add a supply photo"
+                  onClose={() => setPhotoChoice(false)}
+                >
+                  <p className="form-intro">
+                    Take a new photo or choose one you already have.
+                  </p>
+                  <div className="photo-options">
+                    <button
+                      type="button"
+                      className="button primary"
+                      onClick={() => {
+                        setPhotoChoice(false);
+                        if (/Android|iPhone|iPad/i.test(navigator.userAgent))
+                          cameraFile.current?.click();
+                        else setCameraOpen(true);
+                      }}
+                    >
+                      <Camera size={18} />
+                      Use camera
+                    </button>
+                    <button
+                      type="button"
+                      className="button secondary"
+                      onClick={() => {
+                        setPhotoChoice(false);
+                        libraryFile.current?.click();
+                      }}
+                    >
+                      Choose a photo
+                    </button>
+                  </div>
+                </Dialog>
+              )}
+              {cameraOpen && (
+                <CameraCapture
+                  onClose={() => {
+                    setCameraOpen(false);
+                    setPhotoChoice(true);
+                  }}
+                  onPhoto={async (file) => {
+                    await readPhoto(file);
+                    setCameraOpen(false);
                   }}
                 />
-              </label>
+              )}
             </>
           )}
         </>

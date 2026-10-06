@@ -2213,3 +2213,87 @@ h3 {
     display: none;
   }
 }
+
+/* Desktop popovers retain their layout; phones use draggable, scrollable sheets. */
+.sheet-handle {
+  display: none;
+}
+.photo-options {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 18px;
+}
+.camera-preview {
+  width: 100%;
+  max-height: 50dvh;
+  object-fit: contain;
+  background: #081f5c;
+  border-radius: 16px;
+}
+@media (max-width: 720px) {
+  .modal-backdrop {
+    align-items: flex-end;
+    padding: 0;
+  }
+  .modal {
+    width: 100%;
+    max-width: 100%;
+    height: auto;
+    max-height: 78dvh;
+    padding: 0 22px calc(24px + env(safe-area-inset-bottom));
+    border-radius: 24px 24px 0 0;
+    overscroll-behavior: contain;
+    transform: translateY(max(0px, var(--sheet-drag, 0px)));
+  }
+  .modal.sheet-expanded {
+    max-height: 94dvh;
+  }
+  .sheet-handle {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 36px;
+    width: 100%;
+    background: transparent;
+    border: 0;
+    touch-action: none;
+    cursor: grab;
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    background: var(--surface);
+  }
+  .sheet-handle span {
+    height: 5px;
+    width: 44px;
+    border-radius: 4px;
+    background: var(--muted);
+    opacity: 0.6;
+  }
+  .sheet-popup .dropdown,
+  .sheet-popup .notification-panel {
+    position: static;
+    width: 100%;
+    max-width: none;
+    border: 0;
+    box-shadow: none;
+    padding: 0;
+    max-height: none;
+  }
+  .sheet-popup .notification-panel h2 {
+    display: none;
+  }
+  .sheet-popup .dropdown button {
+    min-height: 48px;
+  }
+  .photo-options {
+    flex-direction: column;
+  }
+}
+
+@media (max-width: 720px) {
+  .modal:not(.sheet-expanded) {
+    max-height: clamp(40dvh, calc(78dvh - var(--sheet-drag, 0px)), 94dvh);
+  }
+}

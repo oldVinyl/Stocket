@@ -290,3 +290,94 @@ test("Add item tops up existing stock by typed name and selected catalog match",
   await expect(paper.locator(".stock-row strong")).toContainText("36");
   await expect(page.locator(".item-card")).toHaveCount(8);
 });
+
+test("phone popovers become draggable sheets without losing inventory changes", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/");
+  await expect(page.locator(".item-card")).toHaveCount(8);
+  await page.getByRole("button", { name: "3 low stock alerts" }).click();
+  const sheet = page.getByRole("dialog");
+  await expect(sheet).toBeVisible();
+  const handle = sheet.getByRole("button", {
+    name: "Drag sheet; tap to expand or collapse",
+  });
+  await expect(handle).toBeVisible();
+  let box = await handle.boundingBox();
+  await page.mouse.move(box!.x + box!.width / 2, box!.y + 18);
+  await page.mouse.down();
+  await page.mouse.move(box!.x + box!.width / 2, box!.y - 65, { steps: 8 });
+  await page.mouse.up();
+  await expect(sheet).toHaveClass(/sheet-expanded/);
+  box = await handle.boundingBox();
+  await page.mouse.move(box!.x + box!.width / 2, box!.y + 18);
+  await page.mouse.down();
+  await page.mouse.move(box!.x + box!.width / 2, box!.y + 180, { steps: 8 });
+  await page.mouse.up();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await page.getByRole("button", { name: "Open account menu" }).click();
+  await expect(page.getByRole("dialog")).toContainText(
+    "Help & getting started",
+  );
+  await page.getByRole("button", { name: "Close dialog" }).click();
+  await page.getByRole("button", { name: "Export", exact: true }).click();
+  await expect(page.getByRole("dialog")).toContainText("Download PDF");
+  await page.getByRole("button", { name: "Close dialog" }).click();
+  await page.getByRole("button", { name: "Add item", exact: true }).click();
+  await page.getByLabel("Item name", { exact: true }).fill("Desk fan");
+  await page.getByRole("button", { name: "Suggest a category" }).click();
+  await expect(
+    page.getByText(/Free-tier AI needs a connected company/),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Close dialog" }).click();
+  await expect(page.locator(".item-card")).toHaveCount(8);
+  expect(await page.evaluate(() => document.body.style.overflow)).not.toBe(
+    "hidden",
+  );
+});
+
+test("photo choices include webcam capture and file selection with permission fallback", async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator.mediaDevices, "getUserMedia", {
+      value: async () => {
+        throw new DOMException("Denied", "NotAllowedError");
+      },
+    });
+  });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Add item", exact: true }).click();
+  await page.getByLabel("Item name", { exact: true }).fill("Desk fan");
+  await page.getByRole("button", { name: /Take a photo/ }).click();
+  const choices = page.getByRole("dialog", { name: "Add a supply photo" });
+  await expect(
+    choices.getByRole("button", { name: "Choose a photo", exact: true }),
+  ).toBeVisible();
+  await choices.getByRole("button", { name: "Use camera" }).click();
+  await expect(page.getByRole("dialog").getByRole("alert")).toContainText(
+    "Camera access was denied",
+  );
+  await page.getByRole("button", { name: "Back to photo choices" }).click();
+  await expect(choices).toBeVisible();
+  const fileChooser = page.waitForEvent("filechooser");
+  await choices
+    .getByRole("button", { name: "Choose a photo", exact: true })
+    .click();
+  await (
+    await fileChooser
+  ).setFiles({
+    name: "photo.png",
+    mimeType: "image/png",
+    buffer: await page.screenshot({
+      clip: { x: 0, y: 0, width: 32, height: 32 },
+    }),
+  });
+  await expect(page.getByAltText("Your captured supply")).toHaveAttribute(
+    "src",
+    /^data:image\/webp/,
+  );
+  await page.getByRole("button", { name: "Add to my inventory" }).click();
+  await expect(page.locator(".item-card")).toHaveCount(9);
+});
