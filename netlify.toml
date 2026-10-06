@@ -1,0 +1,10 @@
+# Install npm workspaces from the repository root.
+[build]
+command = "npm run build"
+publish = "apps/web/.next"
+
+[build.environment]
+NODE_VERSION = "22"
+
+[[plugins]]
+package = "@netlify/plugin-nextjs"

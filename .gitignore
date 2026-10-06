@@ -14,3 +14,11 @@ audit.json
 **/GoogleService-Info.plist
 apps/mobile/android/
 apps/mobile/ios/
+
+.secrets/
+supabase/.temp/
+supabase/.branches/
+*.apk
+*.aab
+*.jks
+*.keystore

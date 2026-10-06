@@ -4,6 +4,10 @@
 
 An Expo mobile app and Next.js companion sharing a Supabase backend and a local-first inventory engine. The apps run immediately with a clearly labeled, persistent local demo. No demo data is uploaded or silently converted into company stock.
 
+## Production setup
+
+Follow [PRODUCTION_SETUP.md](PRODUCTION_SETUP.md) for the exact database, invitation, SMTP, hosting, scheduler, APK, and live verification steps. The approved logo has SVG and 2400px PNG exports in [assets/brand](assets/brand); browser and mobile/PWA icons are configured.
+
 ## Run locally
 
 Node.js 22+ and npm are required.
@@ -94,7 +98,7 @@ Alerts go to profiles/tokens from the item's own company. Successfully claimed a
 
 ## Assets
 
-See `ASSETS_NEEDED.md` for the final brand mark and launcher icon. The apps render intentional code-based fallbacks now. Shared photos can be reported through the web item menu; an operator can review `catalog_reports` and replace a bad image through a trusted Storage/SQL environment. No full moderation workflow is implemented.
+The approved brand mark and launcher icons are supplied; see `ASSETS_NEEDED.md` for exact asset paths. The original vector sidebar/mobile headers are preserved. Shared photos can be reported through the web item menu; an operator can review `catalog_reports` and replace a bad image through a trusted Storage/SQL environment. No full moderation workflow is implemented.
 
 ## Verify
 

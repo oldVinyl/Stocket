@@ -16,3 +16,10 @@ additional_redirect_urls = ["http://localhost:3000/auth/callback", "stocket://au
 [auth.email]
 enable_signup = true
 enable_confirmations = true
+
+# AI requests carry a signed-in user JWT and are also checked inside the handler.
+[functions.suggest-category]
+verify_jwt = true
+# This handler authenticates a dedicated scheduler secret, not a user JWT.
+[functions.low-stock-alerts]
+verify_jwt = false
