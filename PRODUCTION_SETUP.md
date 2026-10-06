@@ -455,3 +455,7 @@ Before operational release:
 ## Supplied logo assets
 
 The menu/mobile logo remains its original vector implementation. Clean portable exports are in `assets/brand`: `stocket-logo.svg` and 2400px PNG, cream and dark-background variants, and `stocket-mark.svg`. Lettering is outlined, so recipients do not need a font installed. Browser favicon, PWA icon, Expo launcher, and Android adaptive foreground are configured from that chosen mark. No manual logo replacement is needed.
+
+### Category suggestions: local setup status
+
+The 400 seen in the local demo came from missing Supabase configuration, before Gemini was called. Set the two app environment files in section 3, complete sections 2/4/5 for a verified company, then set Supabase function secret `GEMINI_API_KEY` and deploy `suggest-category` in section 8. Gemini 2.5 Flash currently lists a free text API tier, with account-specific limits: https://ai.google.dev/gemini-api/docs/pricing. Existing catalog entries reuse their categories. Unmatched names can request a genuinely new category/subcategory for confirmation; they are not forced into an unrelated existing category. The demo now explains this setup instead of issuing the failing request.

@@ -3,6 +3,16 @@ export async function POST(req: Request) {
   try {
     checkOrigin(req);
     const body = await req.json();
+    if (
+      !process.env.NEXT_PUBLIC_SUPABASE_URL ||
+      !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+    )
+      return errorResponse(
+        new Error(
+          "Category suggestions need your connected workspace. Configure Supabase, add GEMINI_API_KEY to its function secrets, and deploy suggest-category. Manual categories work now.",
+        ),
+        503,
+      );
     const client = await supabase();
     const {
       data: { user },
@@ -35,7 +45,22 @@ export async function POST(req: Request) {
         "suggest-category",
         { body: { name: body.name } },
       );
-      if (error) throw error;
+      if (error) {
+        const context = (error as { context?: Response }).context;
+        const payload = context
+          ? await context
+              .clone()
+              .json()
+              .catch(() => null)
+          : null;
+        return errorResponse(
+          new Error(
+            payload?.error ??
+              "AI suggestions could not connect. Check that suggest-category is deployed and GEMINI_API_KEY is set; manual categories are available.",
+          ),
+          context?.status === 429 ? 429 : 503,
+        );
+      }
       return Response.json(data);
     }
     throw new Error("Unknown catalog action");

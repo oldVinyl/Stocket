@@ -15,7 +15,7 @@
     "mobile": "npm run start -w @stocket/mobile",
     "build": "npm run build -w @stocket/web",
     "typecheck": "npm run typecheck --workspaces --if-present",
-    "test": "npm run test -w @stocket/core",
+    "test": "npm run test -w @stocket/core && tsx --test scripts/category-provider.test.ts",
     "test:db": "node scripts/database-test.mjs",
     "test:e2e": "playwright test",
     "format": "prettier --write apps packages scripts tests playwright.config.ts package.json"
